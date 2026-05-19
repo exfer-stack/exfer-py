@@ -5,12 +5,15 @@ Quick start::
     from exfer_walletd import Client
 
     with Client("http://127.0.0.1:8080", token="...") as c:
-        print(c.ping())
-        addr = c.generate_address()["address"]
-        print(c.get_balance(addr))
+        addr = c.generate_address()          # → str
+        print(c.get_balance(addr))           # → int
 
-Every method maps 1:1 to a walletd JSON-RPC method; see the walletd RPC
-reference at https://exfer-stack.github.io/exfer-walletd/rpc-reference.html.
+Every method maps 1:1 to a walletd JSON-RPC method; see
+https://exfer-stack.github.io/exfer-py/.
+
+Result *types* live in :mod:`exfer_walletd.types` (``Block``,
+``Transaction``, ``Tip``, …) — import from there if you want to
+annotate variables; you don't need to touch them for normal use.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from .async_client import AsyncClient
 from .client import Client
 from .errors import (
     AuthenticationError,
+    ExferError,
     InsufficientBalanceError,
     InternalError,
     InvalidParamsError,
@@ -33,46 +37,25 @@ from .errors import (
     WalletExistsError,
     WalletNotFoundError,
 )
-from .types import (
-    BalanceResult,
-    Block,
-    BlockHeightResult,
-    GenerateAddressResult,
-    PingResult,
-    SendRawResult,
-    Transaction,
-    TransferResult,
-    Utxo,
-    UtxosResult,
-)
+from .types import Tip
 
 __all__ = [
     "AsyncClient",
     "AuthenticationError",
-    "BalanceResult",
-    "Block",
-    "BlockHeightResult",
     "Client",
-    "GenerateAddressResult",
+    "ExferError",
     "InsufficientBalanceError",
     "InternalError",
     "InvalidParamsError",
     "MethodNotFoundError",
     "ParseError",
-    # types
-    "PingResult",
     "ProtocolError",
-    "SendRawResult",
-    "Transaction",
-    "TransferResult",
+    "Tip",
     "TransportError",
     "TxAuthError",
     "UpstreamError",
-    "Utxo",
-    "UtxosResult",
     "WalletExistsError",
     "WalletNotFoundError",
-    # errors
     "WalletdError",
     "__version__",
 ]

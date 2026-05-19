@@ -11,16 +11,14 @@ pip install exfer-walletd
 from exfer_walletd import Client
 
 with Client("http://127.0.0.1:8080", token="...") as c:
-    print(c.healthz())                     # True if walletd is alive
-    print(c.ping())                        # {"ok": True}
-
-    addr = c.generate_address()["address"]
-    print(c.get_balance(addr))             # {"address": "...", "balance": 0}
+    assert c.healthz()                # True
+    addr = c.generate_address()       # str
+    bal  = c.get_balance(addr)        # int (exfers)
 
     tx = c.transfer(
         from_="<your-managed-address>",
         to="<recipient-address>",
-        amount=30_000_000,                 # exfers; 1 EXFER = 100_000_000 exfers
+        amount=30_000_000,            # exfers; 1 EXFER = 100_000_000 exfers
     )
     print(tx["tx_id"])
 ```
@@ -30,8 +28,8 @@ with Client("http://127.0.0.1:8080", token="...") as c:
 - A thin, typed wrapper over walletd's JSON-RPC. One method per RPC method.
 - Both sync (`Client`) and async (`AsyncClient`) — same surface, shared
   wire layer so they can't drift.
-- Stdlib-only return types (`TypedDict`). Zero runtime overhead, full
-  mypy/pyright support, no `pydantic` dependency forced on consumers.
+- Single-value endpoints return bare `str` / `int`. Multi-field
+  endpoints return `TypedDict`s. No `pydantic` dependency.
 
 ## Async
 
@@ -39,30 +37,26 @@ with Client("http://127.0.0.1:8080", token="...") as c:
 from exfer_walletd import AsyncClient
 
 async with AsyncClient("http://127.0.0.1:8080", token) as c:
-    print(await c.healthz())
-    addr = (await c.generate_address())["address"]
+    assert await c.healthz()
+    addr = await c.generate_address()
     print(await c.get_balance(addr))
 ```
 
 ## What this isn't
 
-- **Not a chain client.** This SDK talks to walletd, which talks to a node.
-  It never holds keys, never signs transactions, never derives addresses.
-  If you want client-side signing, run walletd.
-- Not a high-level wallet abstraction. Methods map 1:1 to the wire grammar;
-  build helpers on top as your application needs them.
+- **Not a chain client.** This SDK talks to walletd, which talks to a
+  node. It never holds keys, never signs transactions, never derives
+  addresses. If you want client-side signing, run walletd.
+- Not a high-level wallet abstraction. Methods map 1:1 to the wire
+  grammar; build helpers on top as your application needs them.
 
 ## Token discovery
 
-Three ways to construct a client:
-
 ```python
-# 1. Explicit (everywhere)
+# 1. Explicit
 Client("http://127.0.0.1:8080", "your-token")
 
-# 2. From env vars (deployed backends)
-#    WALLETD_URL=http://walletd.internal:8080
-#    WALLETD_AUTH_TOKEN=...
+# 2. From env vars (deployed backends): WALLETD_URL + WALLETD_AUTH_TOKEN
 Client.from_env()
 
 # 3. From a local walletd datadir (dev / colocated)
@@ -71,16 +65,17 @@ Client.from_datadir()      # reads ~/.exfer-walletd/token
 
 If walletd is configured with split scopes
 (`WALLETD_AUTH_TOKEN_READ` + `WALLETD_AUTH_TOKEN_SPEND`), construct one
-`Client` per scope. The SDK doesn't model scopes in its types — walletd
-enforces them, and a read-only token calling `transfer` raises
+`Client` per scope. A read-only token calling `transfer` raises
 `AuthenticationError`.
 
 ## Errors
 
-Every documented walletd error code maps to a typed exception:
+Every documented walletd error code maps to a typed exception, all
+rooted at `ExferError`:
 
 ```python
 from exfer_walletd import (
+    ExferError,               # blanket catch
     AuthenticationError,      # -32001
     WalletNotFoundError,      # -32010
     UpstreamError,            # -32020 — walletd's upstream node is unreachable
@@ -91,9 +86,12 @@ from exfer_walletd import (
 )
 ```
 
-`InsufficientBalanceError.in_flight_reserved` is `True` when the shortfall
-comes from UTXOs reserved by other pending transfers from the same walletd —
-retry after they confirm.
+`str(e)` is the `[-32xxx] message` form, so plain
+`log.error(f"{e}")` is enough for production.
+
+`InsufficientBalanceError.in_flight_reserved` is `True` when the
+shortfall comes from UTXOs reserved by other pending transfers from the
+same walletd — retry after they confirm.
 
 ## Docs
 
@@ -101,7 +99,7 @@ Full docs site: **<https://exfer-stack.github.io/exfer-py/>**.
 
 ## Status
 
-`0.4.0` — alpha. Tested against `exfer-walletd >= 0.4.3` (integration CI
-job pins to `v0.4.3`).
+`0.5.0` — alpha. Breaking changes from 0.4.x; see
+[CHANGELOG.md](./CHANGELOG.md). Tested against `exfer-walletd >= 0.4.3`.
 
 MIT licensed.

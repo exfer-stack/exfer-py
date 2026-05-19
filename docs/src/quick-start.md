@@ -33,11 +33,11 @@ with Client.from_datadir() as c:
 
 ```python
 with Client.from_datadir() as c:
-    addr = c.generate_address()["address"]
+    addr = c.generate_address()      # → str
     print("deposit address:", addr)
 
-    bal = c.get_balance(addr)
-    print("balance (exfers):", bal["balance"])
+    bal = c.get_balance(addr)        # → int (exfers)
+    print("balance (exfers):", bal)
 ```
 
 walletd persists the key file in its datadir under `wallets/<address>.key`
@@ -60,11 +60,25 @@ with Client.from_datadir() as c:
 > `from` is a Python keyword. The wire field walletd sees is plain
 > `from`.
 
+## Liveness probes
+
+```python
+with Client.from_datadir() as c:
+    if not c.healthz():
+        # walletd's HTTP layer is down (or unreachable)
+        ...
+    c.ping()
+    # ping() returns None on success; raises on any failure.
+    # Use it to verify the token is valid AND the JSON-RPC layer is up.
+    # (healthz is unauthenticated and says nothing about token validity.)
+```
+
 ## Handle errors
 
 ```python
 from exfer_walletd import (
     Client,
+    ExferError,                       # catch-all SDK error
     InsufficientBalanceError,
     UpstreamError,
     WalletNotFoundError,
@@ -82,6 +96,9 @@ with Client.from_datadir() as c:
         print("walletd doesn't hold the key for", addr)
     except UpstreamError as e:
         print("walletd's upstream node is unreachable:", e.message)
+    except ExferError as e:
+        # blanket catch — `str(e)` includes the error code
+        log.error(f"transfer failed: {e}")    # "[-32xxx] some message"
 ```
 
 Every documented walletd error code is a typed exception — see

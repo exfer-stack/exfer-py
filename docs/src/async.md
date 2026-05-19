@@ -11,9 +11,10 @@ from exfer_walletd import AsyncClient
 
 async def main() -> None:
     async with AsyncClient.from_datadir() as c:
-        print(await c.healthz())                # → True
-        addr = (await c.generate_address())["address"]
-        print(await c.get_balance(addr))
+        assert await c.healthz()
+        addr = await c.generate_address()      # → str
+        bal  = await c.get_balance(addr)       # → int
+        print(addr, bal)
 
 import asyncio
 asyncio.run(main())
@@ -37,8 +38,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 @app.get("/balance/{addr}")
-async def balance(addr: str):
-    return await app.state.walletd.get_balance(addr)
+async def balance(addr: str) -> dict[str, int]:
+    return {"balance": await app.state.walletd.get_balance(addr)}
 ```
 
 A single `AsyncClient` instance is reusable across all requests — it

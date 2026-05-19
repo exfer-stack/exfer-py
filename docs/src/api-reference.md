@@ -26,63 +26,51 @@ Client.from_env(*, url_env="WALLETD_URL", token_env="WALLETD_AUTH_TOKEN")
 Client.from_datadir(*, url="http://127.0.0.1:8080", datadir="~/.exfer-walletd")
 ```
 
-Both raise `RuntimeError` (`from_env`) or `FileNotFoundError`
+Raise `RuntimeError` (`from_env`) or `FileNotFoundError`
 (`from_datadir`) if the inputs are missing.
 
 ---
 
-## `healthz() -> bool`
+## Liveness
 
-Probe `GET /healthz`. Returns `True` iff walletd answered `200 OK` with
-body `ok`. **Returns `False` rather than raising** on any HTTP or
-transport failure — suitable for liveness loops.
+### `healthz() -> bool`
 
-No `Authorization` header is sent (the endpoint is unauthenticated).
+Probe `GET /healthz` — TCP+HTTP only. Returns `True` iff walletd
+answered `200 OK` with body `ok`. **Returns `False` on any failure**
+rather than raising — drops cleanly into liveness loops.
+
+No `Authorization` header is sent. A green `healthz` says nothing
+about whether your token is valid or whether walletd's upstream node
+is reachable.
+
+### `ping() -> None`
+
+Authenticated JSON-RPC round-trip. Returns `None` on success and
+raises on any failure. Use this when you want to verify the token is
+valid and walletd's RPC layer is up — not just the TCP socket.
 
 ---
 
 ## Read-scope methods
 
-### `ping() -> PingResult`
+### `generate_address() -> str`
 
-Liveness check that goes through the JSON-RPC envelope. Doesn't touch
-the upstream node.
-
-```python
-{"ok": True}
-```
-
-### `generate_address() -> GenerateAddressResult`
-
-Create a new Ed25519 keypair. Walletd persists the key on disk under
+Create a new managed address. Returns the address (lowercase 64-char
+hex). Walletd persists the keypair on disk under
 `<datadir>/wallets/<address>.key`.
-
-```python
-{
-  "address": "27e1c8...",      # 64-char hex
-  "pubkey":  "658f0a...",      # 64-char hex
-}
-```
 
 ### `list_addresses() -> list[str]`
 
 Every address walletd holds a key for, sorted ascending.
 
-Returns a bare list of hex strings — the wire envelope
-`{"addresses": [...]}` is unwrapped at the SDK boundary.
+### `get_balance(address: str) -> int`
 
-### `get_balance(address: str) -> BalanceResult`
-
-Confirmed balance for `address`, in exfers.
-
-```python
-{"address": "27e1c8...", "balance": 99900000}
-```
-
-Mempool UTXOs are not counted; for the mempool-aware view, use
-`get_address_utxos`.
+Confirmed balance for `address`, in exfers. Mempool UTXOs are not
+counted; for the mempool-aware view, use `get_address_utxos`.
 
 ### `get_address_utxos(address: str) -> UtxosResult`
+
+Confirmed UTXOs locked to `address` plus tip metadata:
 
 ```python
 {
@@ -103,25 +91,31 @@ Mempool UTXOs are not counted; for the mempool-aware view, use
 }
 ```
 
-`truncated` is `True` if the upstream hit a result limit — paginate
-client-side if you see this.
+`truncated` is `True` if the upstream hit a result limit.
 
 ### `get_script_utxos(script_hex: str) -> UtxosResult`
 
-Same shape as `get_address_utxos`, but matches by raw locking script
-rather than address. `address` is always `None` in the result;
-`script_hex` carries the queried script.
+Same shape as `get_address_utxos`, but matches by raw locking script.
+`address` is always `None` in the result.
 
-### `get_block_height() -> BlockHeightResult`
+### `get_block_height() -> int`
+
+Current chain tip height. For the (height, block_id) pair, use
+`get_tip()`.
+
+### `get_tip() -> Tip`
+
+Current chain tip as a `NamedTuple`:
 
 ```python
-{"height": 577429, "block_id": "17b95f..."}
+from exfer_walletd import Tip
+
+tip = c.get_tip()
+print(tip.height, tip.block_id)
+h, b = tip                    # unpack works too
 ```
 
-### `get_block(*, height: int | None = None, hash: str | None = None) -> Block`
-
-Fetch a block by height **or** hash. Exactly one must be set — passing
-both or neither raises `TypeError` client-side (no HTTP round-trip).
+### `get_block_by_height(height: int) -> Block`
 
 ```python
 {
@@ -138,10 +132,14 @@ both or neither raises `TypeError` client-side (no HTTP round-trip).
 }
 ```
 
-### `get_transaction(hash: str) -> Transaction`
+### `get_block_by_hash(block_hash: str) -> Block`
 
-Fetch a transaction by its `tx_id`. Returns confirmed-chain or mempool
-entries; `in_mempool` distinguishes.
+Same shape; lookup by block hash instead of height.
+
+### `get_transaction(tx_id: str) -> Transaction`
+
+Fetch a transaction. Covers mempool + confirmed; `in_mempool`
+distinguishes.
 
 ```python
 {
@@ -157,14 +155,13 @@ entries; `in_mempool` distinguishes.
 
 ## Spend-scope methods
 
-### `transfer(*, from_: str, to: str, amount: int, fee: int | None = None) -> TransferResult`
+### `transfer(*, from_, to, amount, fee=None) -> TransferResult`
 
 Build, sign, and broadcast a payment from a managed wallet.
 
-- `from_` (trailing underscore) maps to the wire field `from`.
-- `amount` and `fee` are in **exfers**.
-- `fee` defaults to walletd's default (`100_000` = 0.001 EXFER) if
-  omitted; pass an explicit integer to override.
+- `from_` (trailing underscore) maps to wire field `from`.
+- `amount`, `fee` are integers in **exfers**.
+- Omitting `fee` lets walletd apply its default (100_000 = 0.001 EXFER).
 
 ```python
 {
@@ -175,48 +172,41 @@ Build, sign, and broadcast a payment from a managed wallet.
 }
 ```
 
-Raises (most common):
+Common errors:
 
 - `WalletNotFoundError` — walletd doesn't hold the key for `from_`.
-- `InsufficientBalanceError` — wallet can't cover `amount + fee`.
-  Check `.in_flight_reserved` to decide whether to retry.
-- `UpstreamError` — walletd's upstream node rejected the broadcast
-  (e.g. double-spend) or is unreachable.
+- `InsufficientBalanceError` — check `.in_flight_reserved` to decide
+  whether to retry.
+- `UpstreamError` — node rejected the broadcast or is unreachable.
 - `TxAuthError` — UTXO authentication failed; the upstream may be
   malicious or out of sync.
 
 See [Errors](./errors.md) for the full list.
 
-### `send_raw_transaction(tx_hex: str) -> SendRawResult`
+### `send_raw_transaction(tx_hex: str) -> str`
 
-Broadcast a pre-signed transaction. Used by `transfer` internally;
-exposed for callers that build transactions externally.
-
-```python
-{"tx_id": "a02ab0..."}
-```
+Broadcast a pre-signed transaction. Returns the broadcast `tx_id`.
+Used by `transfer` internally; exposed for callers that build
+transactions externally.
 
 ---
 
 ## Type definitions
 
-Every result type is a `typing.TypedDict` — zero runtime cost, full
-type-checker coverage, and the wire dict carries forward unchanged if
-walletd adds new fields.
+Single-value methods return bare Python types (`str`, `int`).
+Multi-field methods return `TypedDict`s or `NamedTuple`s — import them
+from `exfer_walletd.types` if you want to annotate variables.
 
 ```python
-from exfer_walletd import (
-    PingResult,
-    GenerateAddressResult,
-    BalanceResult,
-    BlockHeightResult,
-    Utxo,
-    UtxosResult,
+from exfer_walletd.types import (
     Block,
     Transaction,
     TransferResult,
-    SendRawResult,
+    Utxo,
+    UtxosResult,
 )
+from exfer_walletd import Tip       # NamedTuple — also top-level
 ```
 
-Full field shapes are above under each method.
+You don't need to import any of these for normal use — they're just
+return-type annotations.

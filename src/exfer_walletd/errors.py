@@ -1,12 +1,18 @@
-"""Exception hierarchy mapped 1:1 to walletd's JSON-RPC error codes.
+"""Exception hierarchy for the exfer-walletd SDK.
 
-Two operational classes:
+All SDK errors inherit from :class:`ExferError` so a blanket
+``except ExferError`` catches everything — useful for top-level handlers.
 
-- :class:`WalletdError` and its subclasses cover every error walletd
-  returns *inside* a JSON-RPC envelope (HTTP 200 with ``{"error": ...}``,
-  plus HTTP 400 for parse errors and HTTP 401 for auth).
+Underneath, two operational classes:
+
+- :class:`WalletdError` and its subclasses cover anything walletd
+  returned as a JSON-RPC error envelope (including HTTP 400 for parse
+  errors and HTTP 401 for auth).
 - :class:`TransportError` covers failures *below* the JSON-RPC layer —
   walletd unreachable, connection reset, non-JSON body, etc.
+
+Catch the narrow type when you have specific handling; ``ExferError``
+when you just want "something went wrong with walletd".
 
 If walletd ever ships a new error code the SDK doesn't know about, the
 decoder falls through to bare :class:`WalletdError` with the raw
@@ -17,6 +23,7 @@ from __future__ import annotations
 
 __all__ = [
     "AuthenticationError",
+    "ExferError",
     "InsufficientBalanceError",
     "InternalError",
     "InvalidParamsError",
@@ -33,8 +40,18 @@ __all__ = [
 ]
 
 
-class WalletdError(Exception):
-    """Anything that came back as a JSON-RPC error envelope."""
+class ExferError(Exception):
+    """Common base for every error raised by the SDK.
+
+    Use this for "catch-all SDK errors" handlers; for finer-grained
+    control catch :class:`WalletdError` (walletd answered with an error
+    envelope) or :class:`TransportError` (walletd unreachable, etc.)
+    individually.
+    """
+
+
+class WalletdError(ExferError):
+    """A JSON-RPC error envelope returned by walletd."""
 
     code: int = 0
 
@@ -45,15 +62,19 @@ class WalletdError(Exception):
             self.code = code
         self.data = data
 
+    def __str__(self) -> str:
+        # Make logs / `print(e)` self-describing — the code is half the
+        # debugging story and shouldn't require a separate `.code` lookup.
+        return f"[{self.code}] {self.message}"
+
     def __repr__(self) -> str:
         return f"{type(self).__name__}(code={self.code}, message={self.message!r})"
 
 
-class TransportError(Exception):
+class TransportError(ExferError):
     """walletd unreachable, HTTP-level failure, or non-JSON body.
 
     Wraps the underlying :mod:`httpx` exception via ``__cause__``.
-    Not a :class:`WalletdError` subclass — different operational class.
     """
 
 
@@ -144,13 +165,15 @@ class TxAuthError(WalletdError):
 class InsufficientBalanceError(WalletdError):
     """-32031: wallet can't cover ``amount + fee``.
 
-    :attr:`in_flight_reserved` is parsed from the message and is ``True``
-    iff the shortfall is partly because UTXOs are reserved by *other*
-    pending transfers from this daemon. In that case retrying after a few
-    seconds (once the pending transfers confirm) may succeed.
+    :attr:`in_flight_reserved` is ``True`` iff the shortfall is partly
+    because UTXOs are reserved by *other* pending transfers from this
+    daemon. In that case retrying after a few seconds (once the pending
+    transfers confirm) may succeed.
 
-    On parse miss, defaults to ``False`` — the safe choice so callers
-    never blindly retry.
+    The value comes from the error envelope's ``data`` field when walletd
+    populates it; otherwise we fall back to a string match against the
+    message. On parse miss, defaults to ``False`` — the safe choice so
+    callers never blindly retry.
     """
 
     code = -32031
@@ -159,11 +182,21 @@ class InsufficientBalanceError(WalletdError):
 
     def __init__(self, message: str, *, code: int | None = None, data: object = None) -> None:
         super().__init__(message, code=code, data=data)
-        # The walletd message format (see exfer-walletd/src/error.rs::
-        # insufficient_balance_message) appends a parenthesised hint when
-        # in-flight UTXOs are reserved:
-        #   "(N more UTXO(s) worth V exfers reserved by pending transfers …)"
-        self.in_flight_reserved = "reserved by pending transfers" in message
+        self.in_flight_reserved = _detect_in_flight(message, data)
+
+
+def _detect_in_flight(message: str, data: object) -> bool:
+    """Prefer structured ``data`` over message scraping.
+
+    walletd may eventually surface this as ``data["in_flight_reserved"]``
+    (tracked upstream); until then we string-match against the canonical
+    message format from ``exfer-walletd/src/error.rs::insufficient_balance_message``.
+    """
+    if isinstance(data, dict):
+        flag = data.get("in_flight_reserved")
+        if isinstance(flag, bool):
+            return flag
+    return "reserved by pending transfers" in message
 
 
 # ---------------------------------------------------------------------------

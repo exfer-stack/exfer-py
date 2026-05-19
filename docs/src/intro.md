@@ -8,9 +8,10 @@ API.
 from exfer_walletd import Client
 
 with Client("http://127.0.0.1:8080", token="...") as c:
-    print(c.healthz())                # → True
-    addr = c.generate_address()["address"]
-    print(c.get_balance(addr))        # → {"address": "...", "balance": 0}
+    assert c.healthz()                # → bool
+    addr = c.generate_address()       # → str
+    bal  = c.get_balance(addr)        # → int (exfers)
+    print(addr, bal)
 ```
 
 ## What it is
@@ -19,11 +20,13 @@ with Client("http://127.0.0.1:8080", token="...") as c:
   method, no abstraction in between.
 - Both **sync** (`Client`) and **async** (`AsyncClient`) — same surface,
   shared wire layer.
-- `TypedDict` return shapes. Zero runtime cost, full mypy / pyright
-  coverage, no `pydantic` dependency forced on consumers.
+- Single-value endpoints (`generate_address`, `get_balance`,
+  `get_block_height`, `send_raw_transaction`, …) return bare Python
+  values (`str`, `int`). Multi-field endpoints return `TypedDict`s.
 - Stable error hierarchy mapped 1:1 to walletd's documented JSON-RPC
-  error codes. Unknown codes fall through to bare `WalletdError` so
-  future walletd releases don't break your code.
+  error codes, all rooted at `ExferError`. Unknown codes fall through
+  to bare `WalletdError` so future walletd releases don't break your
+  code.
 
 ## What it isn't
 
@@ -35,9 +38,10 @@ with Client("http://127.0.0.1:8080", token="...") as c:
 
 ## Status
 
-`0.3.0` — alpha. Tested against `exfer-walletd >= 0.4.3` (the
-integration CI job pins to `v0.4.3`). API surface is stable; minor
-versions may add methods as walletd does.
+`0.5.0` — alpha. **Breaking changes from 0.4.x** (return shapes
+unwrapped, `get_block` split, error code surfaced in `str()`); see the
+[CHANGELOG](https://github.com/exfer-stack/exfer-py/blob/main/CHANGELOG.md).
+Tested against `exfer-walletd >= 0.4.3`.
 
 MIT licensed. Source:
 [github.com/exfer-stack/exfer-py](https://github.com/exfer-stack/exfer-py).

@@ -1,11 +1,9 @@
 """Async-client mirror of test_client_sync.
 
-We keep this trim — the per-method wire shapes are already exercised
-exhaustively in :mod:`test_client_sync`. Here we focus on the things
-that could realistically diverge: every method awaits and round-trips,
-the async context manager closes the underlying client, the env/datadir
-constructors work, and the same TypeError firing rules on ``get_block``
-hold.
+We exercise every method shape but skip the wire-detail checks (those
+are already exhaustive on the sync side). Focus here: every method
+awaits, returns the right unwrapped type, and the env / datadir
+constructors close cleanly.
 """
 
 from __future__ import annotations
@@ -19,7 +17,7 @@ import httpx
 import pytest
 import respx
 
-from exfer_walletd import AsyncClient
+from exfer_walletd import AsyncClient, Tip
 
 WALLETD_URL = "http://walletd.test"
 TOKEN = "test-token"
@@ -47,20 +45,17 @@ async def client(mock_walletd: respx.MockRouter) -> AsyncIterator[AsyncClient]:
 pytestmark = pytest.mark.asyncio
 
 
-# ---------------------------------------------------------------------------
-# Every method round-trips
-# ---------------------------------------------------------------------------
-
-
-async def test_ping(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+async def test_ping_returns_none(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(return_value=rpc_ok({"ok": True}))
-    assert await client.ping() == {"ok": True}
+    assert await client.ping() is None
 
 
-async def test_generate_address(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+async def test_generate_address_returns_str(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
     mock_walletd.post("/").mock(return_value=rpc_ok({"address": ADDR, "pubkey": "de" * 32}))
     out = await client.generate_address()
-    assert out["address"] == ADDR
+    assert out == ADDR
 
 
 async def test_list_addresses(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
@@ -68,10 +63,9 @@ async def test_list_addresses(client: AsyncClient, mock_walletd: respx.MockRoute
     assert await client.list_addresses() == [ADDR]
 
 
-async def test_get_balance(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+async def test_get_balance_returns_int(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(return_value=rpc_ok({"address": ADDR, "balance": 42}))
-    out = await client.get_balance(ADDR)
-    assert out["balance"] == 42
+    assert await client.get_balance(ADDR) == 42
 
 
 async def test_get_address_utxos(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
@@ -106,10 +100,20 @@ async def test_get_script_utxos(client: AsyncClient, mock_walletd: respx.MockRou
     assert out["script_hex"] == "deadbeef"
 
 
-async def test_get_block_height(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+async def test_get_block_height_returns_int(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
     mock_walletd.post("/").mock(return_value=rpc_ok({"height": 1, "block_id": BLOCK_HASH}))
-    out = await client.get_block_height()
-    assert out == {"height": 1, "block_id": BLOCK_HASH}
+    assert await client.get_block_height() == 1
+
+
+async def test_get_tip_returns_named_tuple(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"height": 7, "block_id": BLOCK_HASH}))
+    tip = await client.get_tip()
+    assert isinstance(tip, Tip)
+    assert (tip.height, tip.block_id) == (7, BLOCK_HASH)
 
 
 def _block_result() -> dict[str, Any]:
@@ -129,38 +133,20 @@ def _block_result() -> dict[str, Any]:
 
 async def test_get_block_by_height(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
     route = mock_walletd.post("/").mock(return_value=rpc_ok(_block_result()))
-    await client.get_block(height=1)
+    await client.get_block_by_height(1)
     body = json.loads(route.calls.last.request.content)
     assert body["params"] == {"height": 1}
 
 
 async def test_get_block_by_hash(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
     route = mock_walletd.post("/").mock(return_value=rpc_ok(_block_result()))
-    await client.get_block(hash=BLOCK_HASH)
+    await client.get_block_by_hash(BLOCK_HASH)
     body = json.loads(route.calls.last.request.content)
     assert body["params"] == {"hash": BLOCK_HASH}
 
 
-async def test_get_block_rejects_both() -> None:
-    c = AsyncClient(WALLETD_URL, TOKEN)
-    try:
-        with pytest.raises(TypeError, match="exactly one"):
-            await c.get_block(height=1, hash=BLOCK_HASH)
-    finally:
-        await c.aclose()
-
-
-async def test_get_block_rejects_neither() -> None:
-    c = AsyncClient(WALLETD_URL, TOKEN)
-    try:
-        with pytest.raises(TypeError, match="exactly one"):
-            await c.get_block()
-    finally:
-        await c.aclose()
-
-
 async def test_get_transaction(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
-    mock_walletd.post("/").mock(
+    route = mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
                 "tx_id": TX_ID,
@@ -173,9 +159,11 @@ async def test_get_transaction(client: AsyncClient, mock_walletd: respx.MockRout
     )
     out = await client.get_transaction(TX_ID)
     assert out["in_mempool"] is True
+    body = json.loads(route.calls.last.request.content)
+    assert body["params"] == {"hash": TX_ID}
 
 
-async def test_transfer_wire_field_is_from_not_from_(
+async def test_transfer_wire_field_is_from(
     client: AsyncClient, mock_walletd: respx.MockRouter
 ) -> None:
     route = mock_walletd.post("/").mock(
@@ -186,10 +174,13 @@ async def test_transfer_wire_field_is_from_not_from_(
     assert body["params"] == {"from": ADDR, "to": "ee" * 32, "amount": 10}
 
 
-async def test_send_raw_transaction(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+async def test_send_raw_transaction_returns_str(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
     mock_walletd.post("/").mock(return_value=rpc_ok({"tx_id": TX_ID}))
     out = await client.send_raw_transaction("01000200")
-    assert out == {"tx_id": TX_ID}
+    assert isinstance(out, str)
+    assert out == TX_ID
 
 
 # ---------------------------------------------------------------------------
@@ -236,12 +227,6 @@ async def test_healthz_ok(client: AsyncClient, mock_walletd: respx.MockRouter) -
     assert await client.healthz() is True
 
 
-async def test_healthz_no_auth_header(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
-    route = mock_walletd.get("/healthz").mock(return_value=httpx.Response(200, text="ok\n"))
-    await client.healthz()
-    assert "authorization" not in route.calls.last.request.headers
-
-
 async def test_healthz_transport_failure(
     client: AsyncClient, mock_walletd: respx.MockRouter
 ) -> None:
@@ -250,7 +235,6 @@ async def test_healthz_transport_failure(
 
 
 async def test_context_manager_closes_http() -> None:
-    # Don't rely on respx here; just confirm aclose is wired.
     async with AsyncClient(WALLETD_URL, TOKEN) as c:
         http = c._http
         assert not http.is_closed

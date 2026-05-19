@@ -1,9 +1,16 @@
-"""TypedDict result shapes for every walletd JSON-RPC method.
+"""Result shapes for the SDK.
 
 Field names and types track ``exfer-walletd/src/upstream/mod.rs`` and
-``src/tx/mod.rs``. ``Optional[T]`` is used in the stdlib-y form rather
-than ``T | None`` so the dicts stay readable on Python 3.9 without
-``from __future__ import annotations`` polluting consumer files.
+``src/tx/mod.rs``.
+
+Two flavours:
+
+- ``TypedDict`` for multi-field responses where the wire dict carries
+  multiple useful values (block, transaction, transfer receipt, utxo
+  list). Zero runtime cost; mypy / pyright check perfectly.
+- :class:`Tip` is a ``NamedTuple`` rather than a TypedDict because the
+  common access pattern is positional unpacking (``height, block_id = ...``)
+  and the field count is small enough to make that natural.
 
 Amounts are integers in *exfers* (1 EXFER = 100_000_000 exfers).
 Hash and address strings are lowercase hex, no ``0x`` prefix.
@@ -11,15 +18,11 @@ Hash and address strings are lowercase hex, no ``0x`` prefix.
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 __all__ = [
-    "BalanceResult",
     "Block",
-    "BlockHeightResult",
-    "GenerateAddressResult",
-    "PingResult",
-    "SendRawResult",
+    "Tip",
     "Transaction",
     "TransferResult",
     "Utxo",
@@ -27,21 +30,14 @@ __all__ = [
 ]
 
 
-class PingResult(TypedDict):
-    ok: bool
+class Tip(NamedTuple):
+    """Chain tip — height and block hash together.
 
+    Returned by :meth:`exfer_walletd.Client.get_tip` when you want both
+    pieces of information. If you only need the height, call
+    :meth:`get_block_height` instead and skip the unpack.
+    """
 
-class GenerateAddressResult(TypedDict):
-    address: str
-    pubkey: str
-
-
-class BalanceResult(TypedDict):
-    address: str
-    balance: int
-
-
-class BlockHeightResult(TypedDict):
     height: int
     block_id: str
 
@@ -89,7 +85,3 @@ class TransferResult(TypedDict):
     size: int
     tip_height: int
     submitted: bool
-
-
-class SendRawResult(TypedDict):
-    tx_id: str

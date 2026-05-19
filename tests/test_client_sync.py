@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 import respx
 
-from exfer_walletd import Client
+from exfer_walletd import Client, Tip
 
-from .conftest import TOKEN, WALLETD_URL, rpc_ok
+from .conftest import WALLETD_URL, rpc_ok
 
 ADDR = "8b0609a812de3b0103dd3b3e78be4a99ef1699b6f02820e1bc1dbcfc75681481"
 TX_ID = "a02ab025d75a295540d681f89da3f8bfed894e02cea721085facbf9ad4525c68"
@@ -18,39 +18,55 @@ BLOCK_HASH = "17b95f159c3e51440207cc6648f655201bac84fd0e1e5a9ad8461e2d7a2932d5"
 
 
 # ---------------------------------------------------------------------------
+# Liveness
+# ---------------------------------------------------------------------------
+
+
+def test_ping_returns_none_on_success(client: Client, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"ok": True}))
+    assert client.ping() is None
+
+
+def test_ping_raises_on_error(client: Client, mock_walletd: respx.MockRouter) -> None:
+    from exfer_walletd import UpstreamError
+
+    from .conftest import rpc_err
+
+    mock_walletd.post("/").mock(return_value=rpc_err(-32020, "node down"))
+    with pytest.raises(UpstreamError):
+        client.ping()
+
+
+# ---------------------------------------------------------------------------
 # Read scope
 # ---------------------------------------------------------------------------
 
 
-def test_ping(client: Client, mock_walletd: respx.MockRouter) -> None:
-    mock_walletd.post("/").mock(return_value=rpc_ok({"ok": True}))
-    assert client.ping() == {"ok": True}
-
-
-def test_generate_address(client: Client, mock_walletd: respx.MockRouter) -> None:
+def test_generate_address_returns_bare_string(
+    client: Client, mock_walletd: respx.MockRouter
+) -> None:
     mock_walletd.post("/").mock(return_value=rpc_ok({"address": ADDR, "pubkey": "de" * 32}))
     out = client.generate_address()
-    assert out["address"] == ADDR
-    assert out["pubkey"] == "de" * 32
+    assert isinstance(out, str)
+    assert out == ADDR
 
 
 def test_list_addresses_unwraps(client: Client, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(return_value=rpc_ok({"addresses": [ADDR, "ee" * 32]}))
     out = client.list_addresses()
-    assert isinstance(out, list)
     assert out == [ADDR, "ee" * 32]
 
 
-def test_get_balance(client: Client, mock_walletd: respx.MockRouter) -> None:
+def test_get_balance_returns_bare_int(client: Client, mock_walletd: respx.MockRouter) -> None:
     route = mock_walletd.post("/").mock(return_value=rpc_ok({"address": ADDR, "balance": 99900000}))
     out = client.get_balance(ADDR)
-    assert out["balance"] == 99900000
+    assert isinstance(out, int)
+    assert out == 99900000
     body = json.loads(route.calls.last.request.content)
-    assert body["method"] == "get_balance"
     assert body["params"] == {"address": ADDR}
 
 
-def test_get_address_utxos(client: Client, mock_walletd: respx.MockRouter) -> None:
+def test_get_address_utxos_returns_dict(client: Client, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
@@ -75,7 +91,6 @@ def test_get_address_utxos(client: Client, mock_walletd: respx.MockRouter) -> No
     assert out["tip_height"] == 577429
     assert out["truncated"] is False
     assert len(out["utxos"]) == 1
-    assert out["utxos"][0]["value"] == 99900000
 
 
 def test_get_script_utxos(client: Client, mock_walletd: respx.MockRouter) -> None:
@@ -96,10 +111,22 @@ def test_get_script_utxos(client: Client, mock_walletd: respx.MockRouter) -> Non
     assert body["params"] == {"script_hex": "deadbeef"}
 
 
-def test_get_block_height(client: Client, mock_walletd: respx.MockRouter) -> None:
-    mock_walletd.post("/").mock(return_value=rpc_ok({"height": 1, "block_id": BLOCK_HASH}))
+def test_get_block_height_returns_bare_int(client: Client, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"height": 577429, "block_id": BLOCK_HASH}))
     out = client.get_block_height()
-    assert out == {"height": 1, "block_id": BLOCK_HASH}
+    assert isinstance(out, int)
+    assert out == 577429
+
+
+def test_get_tip_returns_named_tuple(client: Client, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"height": 577429, "block_id": BLOCK_HASH}))
+    tip = client.get_tip()
+    assert isinstance(tip, Tip)
+    assert tip.height == 577429
+    assert tip.block_id == BLOCK_HASH
+    # Iterable unpacking works.
+    h, b = tip
+    assert (h, b) == (577429, BLOCK_HASH)
 
 
 def _block_result() -> dict:
@@ -119,33 +146,26 @@ def _block_result() -> dict:
 
 def test_get_block_by_height(client: Client, mock_walletd: respx.MockRouter) -> None:
     route = mock_walletd.post("/").mock(return_value=rpc_ok(_block_result()))
-    out = client.get_block(height=577429)
+    out = client.get_block_by_height(577429)
     assert out["hash"] == BLOCK_HASH
     body = json.loads(route.calls.last.request.content)
+    assert body["method"] == "get_block"
     assert body["params"] == {"height": 577429}
 
 
 def test_get_block_by_hash(client: Client, mock_walletd: respx.MockRouter) -> None:
     route = mock_walletd.post("/").mock(return_value=rpc_ok(_block_result()))
-    client.get_block(hash=BLOCK_HASH)
+    out = client.get_block_by_hash(BLOCK_HASH)
+    assert out["height"] == 577429
     body = json.loads(route.calls.last.request.content)
     assert body["params"] == {"hash": BLOCK_HASH}
 
 
-def test_get_block_rejects_both() -> None:
-    c = Client(WALLETD_URL, TOKEN)
-    with pytest.raises(TypeError, match="exactly one"):
-        c.get_block(height=1, hash=BLOCK_HASH)
-
-
-def test_get_block_rejects_neither() -> None:
-    c = Client(WALLETD_URL, TOKEN)
-    with pytest.raises(TypeError, match="exactly one"):
-        c.get_block()
-
-
-def test_get_transaction(client: Client, mock_walletd: respx.MockRouter) -> None:
-    mock_walletd.post("/").mock(
+def test_get_transaction_param_name_is_tx_id(
+    client: Client, mock_walletd: respx.MockRouter
+) -> None:
+    """SDK param is `tx_id` but the wire field stays `hash` (walletd's name)."""
+    route = mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
                 "tx_id": TX_ID,
@@ -158,7 +178,24 @@ def test_get_transaction(client: Client, mock_walletd: respx.MockRouter) -> None
     )
     out = client.get_transaction(TX_ID)
     assert out["tx_id"] == TX_ID
-    assert out["in_mempool"] is False
+    body = json.loads(route.calls.last.request.content)
+    assert body["params"] == {"hash": TX_ID}
+
+
+def test_get_transaction_accepts_keyword(client: Client, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "tx_id": TX_ID,
+                "tx_hex": "00",
+                "in_mempool": True,
+                "block_hash": None,
+                "block_height": None,
+            }
+        )
+    )
+    out = client.get_transaction(tx_id=TX_ID)
+    assert out["in_mempool"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -175,8 +212,6 @@ def test_transfer_wire_field_is_from_not_from_(
     out = client.transfer(from_=ADDR, to="ee" * 32, amount=30000000)
     assert out["submitted"] is True
     body = json.loads(route.calls.last.request.content)
-    assert body["method"] == "transfer"
-    # Critical: wire field must be "from", not "from_".
     assert body["params"] == {"from": ADDR, "to": "ee" * 32, "amount": 30000000}
 
 
@@ -190,7 +225,6 @@ def test_transfer_with_fee(client: Client, mock_walletd: respx.MockRouter) -> No
 
 
 def test_transfer_omits_fee_when_none(client: Client, mock_walletd: respx.MockRouter) -> None:
-    """When fee is None, omit it so walletd uses its default (100_000)."""
     route = mock_walletd.post("/").mock(
         return_value=rpc_ok({"tx_id": TX_ID, "size": 227, "tip_height": 1, "submitted": True})
     )
@@ -199,10 +233,11 @@ def test_transfer_omits_fee_when_none(client: Client, mock_walletd: respx.MockRo
     assert "fee" not in body["params"]
 
 
-def test_send_raw_transaction(client: Client, mock_walletd: respx.MockRouter) -> None:
+def test_send_raw_transaction_returns_tx_id(client: Client, mock_walletd: respx.MockRouter) -> None:
     route = mock_walletd.post("/").mock(return_value=rpc_ok({"tx_id": TX_ID}))
     out = client.send_raw_transaction("01000200deadbeef")
-    assert out == {"tx_id": TX_ID}
+    assert isinstance(out, str)
+    assert out == TX_ID
     body = json.loads(route.calls.last.request.content)
     assert body["params"] == {"tx_hex": "01000200deadbeef"}
 

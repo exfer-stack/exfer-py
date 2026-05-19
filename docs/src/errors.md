@@ -1,15 +1,22 @@
 # Errors
 
-Two operational classes:
+The entire SDK error tree is rooted at `ExferError` — so a blanket
+`except ExferError` always works as the outermost catch.
 
-- **`WalletdError`** — walletd returned a JSON-RPC error envelope. Every
-  documented code maps to a typed subclass.
+Underneath, two operational classes:
+
+- **`WalletdError`** — walletd answered with a JSON-RPC error envelope.
+  Every documented error code maps to a typed subclass.
 - **`TransportError`** — walletd itself is unreachable, the body isn't
-  JSON, or HTTP framing went sideways. **Not a `WalletdError`
-  subclass**; catch separately.
+  JSON, or HTTP framing went sideways. Separate branch from
+  `WalletdError`.
 
 ```python
-from exfer_walletd import WalletdError, TransportError
+from exfer_walletd import (
+    ExferError,        # top-level catch-all
+    WalletdError,      # walletd answered with an error
+    TransportError,    # walletd unreachable / non-JSON / etc.
+)
 
 try:
     c.get_balance(addr)
@@ -17,12 +24,18 @@ except WalletdError as e:        # walletd answered with an error
     handle_rpc_error(e.code, e.message)
 except TransportError as e:      # walletd unreachable, etc.
     handle_network_error(e)
+except ExferError as e:          # belt-and-braces fallback
+    log.exception("unexpected SDK error: %s", e)
 ```
+
+`str(e)` always includes the code in the `[-32xxx] message` format,
+so plain `log.error(f"{e}")` is enough for production logs.
 
 ## Code → exception table
 
-Every code below is a subclass of `WalletdError`. Catch the narrow type
-when you have specific handling; otherwise catch `WalletdError`.
+Every code below is a subclass of `WalletdError` (and therefore of
+`ExferError`). Catch the narrow type when you have specific handling;
+otherwise catch `WalletdError`.
 
 | Code | Exception | When |
 |------|-----------|------|
@@ -44,7 +57,7 @@ being silently swallowed. Callers can always branch on `e.code`.
 ## `InsufficientBalanceError.in_flight_reserved`
 
 The one piece of value-add parsing the SDK does: when walletd's
-shortfall message mentions UTXOs reserved by pending transfers from
+shortfall comes from UTXOs reserved by *other* pending transfers from
 the same daemon, `in_flight_reserved` is `True`. In that case
 retrying in a few seconds may succeed (once the pending transfers
 confirm and free their UTXOs).
@@ -62,8 +75,10 @@ except InsufficientBalanceError as e:
         alert_ops("hot wallet drained")
 ```
 
-On parse miss (walletd reworded the message), `in_flight_reserved`
-defaults to `False` — the safe choice so callers never blindly retry.
+The flag is sourced from the error envelope's `data` field when
+walletd populates it; otherwise we fall back to string-matching
+walletd's canonical message. On parse miss, defaults to `False` — the
+safe choice so callers never blindly retry.
 
 ## HTTP framing
 

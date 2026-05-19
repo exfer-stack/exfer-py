@@ -19,18 +19,16 @@ import httpx
 from ._transport import _IdCounter, build_envelope, decode_response, wrap_httpx_error
 from ._version import __version__
 from .types import (
-    BalanceResult,
     Block,
-    BlockHeightResult,
-    GenerateAddressResult,
-    PingResult,
-    SendRawResult,
+    Tip,
     Transaction,
     TransferResult,
     UtxosResult,
 )
 
 __all__ = ["AsyncClient"]
+
+USER_AGENT = f"exfer-walletd-py/{__version__}"
 
 
 class AsyncClient:
@@ -39,13 +37,6 @@ class AsyncClient:
     Method surface and semantics mirror :class:`Client` exactly. Use
     ``async with AsyncClient(...)`` (or call :meth:`aclose`) so the
     underlying :class:`httpx.AsyncClient` is properly torn down.
-
-    Example::
-
-        async with AsyncClient("http://127.0.0.1:8080", token) as c:
-            print(await c.ping())
-            addr = (await c.generate_address())["address"]
-            print(await c.get_balance(addr))
     """
 
     def __init__(
@@ -63,7 +54,7 @@ class AsyncClient:
         self._http = httpx.AsyncClient(
             timeout=timeout,
             transport=transport,
-            headers={"User-Agent": f"exfer-walletd-py/{__version__}"},
+            headers={"User-Agent": USER_AGENT},
         )
         self._ids = _IdCounter()
 
@@ -97,7 +88,6 @@ class AsyncClient:
         token_env: str = "WALLETD_AUTH_TOKEN",
         **kwargs: Any,
     ) -> AsyncClient:
-        """Read ``url`` and ``token`` from environment variables."""
         url = os.environ.get(url_env)
         token = os.environ.get(token_env)
         if not url:
@@ -114,7 +104,6 @@ class AsyncClient:
         datadir: str = "~/.exfer-walletd",
         **kwargs: Any,
     ) -> AsyncClient:
-        """Read the bearer token from ``<datadir>/token`` (defaults to walletd's)."""
         token_path = Path(datadir).expanduser() / "token"
         try:
             token = token_path.read_text().strip()
@@ -127,26 +116,30 @@ class AsyncClient:
         return cls(url, token, **kwargs)
 
     # ------------------------------------------------------------------
-    # Liveness (unauthenticated)
+    # Liveness
     # ------------------------------------------------------------------
 
     async def healthz(self) -> bool:
-        """Probe ``GET /healthz``. Returns ``False`` on any failure."""
+        """TCP+HTTP-only probe. Returns ``False`` on any failure."""
         try:
             resp = await self._http.get(f"{self._url}/healthz")
         except httpx.HTTPError:
             return False
         return resp.status_code == 200 and resp.text.startswith("ok")
 
+    async def ping(self) -> None:
+        """Authenticated round-trip. Raises on any failure."""
+        await self._call("ping", None)
+
     # ------------------------------------------------------------------
     # Read scope
     # ------------------------------------------------------------------
 
-    async def ping(self) -> PingResult:
-        return cast(PingResult, await self._call("ping", None))
-
-    async def generate_address(self) -> GenerateAddressResult:
-        return cast(GenerateAddressResult, await self._call("generate_address", None))
+    async def generate_address(self) -> str:
+        result = await self._call("generate_address", None)
+        if not isinstance(result, dict) or "address" not in result:
+            raise RuntimeError(f"generate_address returned unexpected shape: {result!r}")
+        return str(result["address"])
 
     async def list_addresses(self) -> list[str]:
         result = await self._call("list_addresses", None)
@@ -157,8 +150,11 @@ class AsyncClient:
             raise RuntimeError(f"list_addresses.addresses is not a list: {addresses!r}")
         return [str(a) for a in addresses]
 
-    async def get_balance(self, address: str) -> BalanceResult:
-        return cast(BalanceResult, await self._call("get_balance", {"address": address}))
+    async def get_balance(self, address: str) -> int:
+        result = await self._call("get_balance", {"address": address})
+        if not isinstance(result, dict) or "balance" not in result:
+            raise RuntimeError(f"get_balance returned unexpected shape: {result!r}")
+        return int(result["balance"])
 
     async def get_address_utxos(self, address: str) -> UtxosResult:
         return cast(UtxosResult, await self._call("get_address_utxos", {"address": address}))
@@ -166,22 +162,26 @@ class AsyncClient:
     async def get_script_utxos(self, script_hex: str) -> UtxosResult:
         return cast(UtxosResult, await self._call("get_script_utxos", {"script_hex": script_hex}))
 
-    async def get_block_height(self) -> BlockHeightResult:
-        return cast(BlockHeightResult, await self._call("get_block_height", None))
+    async def get_block_height(self) -> int:
+        result = await self._call("get_block_height", None)
+        if not isinstance(result, dict) or "height" not in result:
+            raise RuntimeError(f"get_block_height returned unexpected shape: {result!r}")
+        return int(result["height"])
 
-    async def get_block(
-        self,
-        *,
-        height: int | None = None,
-        hash: str | None = None,
-    ) -> Block:
-        if (height is None) == (hash is None):
-            raise TypeError("get_block requires exactly one of `height` or `hash`")
-        params: dict[str, Any] = {"height": height} if height is not None else {"hash": hash}
-        return cast(Block, await self._call("get_block", params))
+    async def get_tip(self) -> Tip:
+        result = await self._call("get_block_height", None)
+        if not isinstance(result, dict) or "height" not in result or "block_id" not in result:
+            raise RuntimeError(f"get_tip returned unexpected shape: {result!r}")
+        return Tip(int(result["height"]), str(result["block_id"]))
 
-    async def get_transaction(self, hash: str) -> Transaction:
-        return cast(Transaction, await self._call("get_transaction", {"hash": hash}))
+    async def get_block_by_height(self, height: int) -> Block:
+        return cast(Block, await self._call("get_block", {"height": height}))
+
+    async def get_block_by_hash(self, block_hash: str) -> Block:
+        return cast(Block, await self._call("get_block", {"hash": block_hash}))
+
+    async def get_transaction(self, tx_id: str) -> Transaction:
+        return cast(Transaction, await self._call("get_transaction", {"hash": tx_id}))
 
     # ------------------------------------------------------------------
     # Spend scope
@@ -200,8 +200,11 @@ class AsyncClient:
             params["fee"] = fee
         return cast(TransferResult, await self._call("transfer", params))
 
-    async def send_raw_transaction(self, tx_hex: str) -> SendRawResult:
-        return cast(SendRawResult, await self._call("send_raw_transaction", {"tx_hex": tx_hex}))
+    async def send_raw_transaction(self, tx_hex: str) -> str:
+        result = await self._call("send_raw_transaction", {"tx_hex": tx_hex})
+        if not isinstance(result, dict) or "tx_id" not in result:
+            raise RuntimeError(f"send_raw_transaction returned unexpected shape: {result!r}")
+        return str(result["tx_id"])
 
     # ------------------------------------------------------------------
     # Internal

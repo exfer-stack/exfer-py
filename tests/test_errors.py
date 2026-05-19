@@ -166,8 +166,39 @@ def test_walletd_error_repr_is_useful() -> None:
     assert "upstream down" in repr(err)
 
 
-def test_transport_error_not_a_walletd_error() -> None:
-    """Operational classes are distinct — callers must catch separately."""
+def test_walletd_error_str_includes_code() -> None:
+    """str(e) is what most logs and `print(e)` show — it must carry the code."""
+    err = error_for_code(-32020, "upstream down")
+    assert str(err) == "[-32020] upstream down"
+
+
+def test_exfer_error_catches_both_branches() -> None:
+    """Catching ExferError must catch both WalletdError and TransportError."""
+    from exfer_walletd import ExferError, TransportError
+
+    assert issubclass(WalletdError, ExferError)
+    assert issubclass(TransportError, ExferError)
+
+
+def test_transport_error_still_distinct_from_walletd_error() -> None:
+    """The branches share a parent but aren't interchangeable."""
     from exfer_walletd import TransportError
 
     assert not issubclass(TransportError, WalletdError)
+    assert not issubclass(WalletdError, TransportError)
+
+
+def test_insufficient_balance_prefers_structured_data() -> None:
+    """If walletd ever populates `data["in_flight_reserved"]`, trust it over the message."""
+    msg_says_no = (
+        "insufficient balance: need 5100000 exfers (amount + fee), "
+        "wallet has 4000000 spendable across 1 UTXO(s)"
+    )
+    err = error_for_code(-32031, msg_says_no, data={"in_flight_reserved": True})
+    assert isinstance(err, InsufficientBalanceError)
+    assert err.in_flight_reserved is True
+
+    msg_says_yes = "insufficient balance: ... reserved by pending transfers from this daemon"
+    err = error_for_code(-32031, msg_says_yes, data={"in_flight_reserved": False})
+    assert isinstance(err, InsufficientBalanceError)
+    assert err.in_flight_reserved is False
