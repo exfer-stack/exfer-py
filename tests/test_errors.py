@@ -96,6 +96,59 @@ def test_insufficient_balance_detects_in_flight_hint() -> None:
     assert err.in_flight_reserved is True
 
 
+def _walletd_insufficient_balance_message(
+    needed: int,
+    available: int,
+    utxo_count: int,
+    in_flight_value: int,
+    in_flight_count: int,
+) -> str:
+    """Reproduce the *exact* format walletd emits.
+
+    This mirrors :func:`insufficient_balance_message` in
+    ``exfer-walletd/src/error.rs`` byte-for-byte. If walletd ever
+    reformats the message, the assertions in
+    :func:`test_in_flight_hint_matches_walletd_format` start failing,
+    which is what catches the drift before users do.
+    """
+    s = (
+        f"insufficient balance: need {needed} exfers (amount + fee), "
+        f"wallet has {available} spendable across {utxo_count} UTXO(s)"
+    )
+    if in_flight_count > 0:
+        s += (
+            f" ({in_flight_count} more UTXO(s) worth {in_flight_value} exfers reserved "
+            f"by pending transfers from this daemon; retry once they confirm or use a "
+            f"different sending wallet)"
+        )
+    return s
+
+
+def test_in_flight_hint_matches_walletd_format() -> None:
+    """Both branches of walletd's insufficient_balance message parse correctly."""
+    with_inflight = _walletd_insufficient_balance_message(
+        needed=5_100_000,
+        available=4_000_000,
+        utxo_count=1,
+        in_flight_value=9_000_000,
+        in_flight_count=2,
+    )
+    err = error_for_code(-32031, with_inflight)
+    assert isinstance(err, InsufficientBalanceError)
+    assert err.in_flight_reserved is True
+
+    without_inflight = _walletd_insufficient_balance_message(
+        needed=5_100_000,
+        available=4_000_000,
+        utxo_count=1,
+        in_flight_value=0,
+        in_flight_count=0,
+    )
+    err = error_for_code(-32031, without_inflight)
+    assert isinstance(err, InsufficientBalanceError)
+    assert err.in_flight_reserved is False
+
+
 def test_insufficient_balance_without_in_flight_hint() -> None:
     msg = (
         "insufficient balance: need 5100000 exfers (amount + fee), "

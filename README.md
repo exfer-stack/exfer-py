@@ -97,6 +97,7 @@ retry after they confirm.
 
 ## Status
 
-`0.2.0` — alpha. Tested against `exfer-walletd >= 0.4.3`.
+`0.3.0` — alpha. Tested against `exfer-walletd >= 0.4.3` (integration CI
+job pins to `v0.4.3`).
 
 MIT licensed.
