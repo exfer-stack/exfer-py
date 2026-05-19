@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.6.0
+
+- **TLS pinning** for walletd's new `--tls` mode (walletd v0.5.0+).
+  Construct with `Client(url="https://…", token="…",
+  fingerprint="sha256:…")` and the SDK installs a custom transport that
+  verifies the server's leaf cert by SHA-256 instead of CA chain.
+  Mismatches raise `FingerprintMismatchError` (a `TransportError`
+  subclass).
+- `from_env()` gained `fingerprint_env="WALLETD_FINGERPRINT"` —
+  optional; only used when set.
+- `from_datadir()` auto-reads `<datadir>/cert.fingerprint` whenever
+  `url` starts with `https://`. Plain http URLs ignore it entirely.
+- `fingerprint=` and `transport=` are mutually exclusive (passing both
+  raises `ValueError`); passing `fingerprint=` with an `http://` URL
+  also raises (almost always a bug).
+- Public re-exports: `FingerprintMismatchError`.
+
 ## 0.5.0 — **breaking**
 
 API polish based on dogfooding. None of the bytes-on-the-wire changed;

@@ -16,7 +16,14 @@ from typing import Any, cast
 
 import httpx
 
-from ._transport import _IdCounter, build_envelope, decode_response, wrap_httpx_error
+from ._transport import (
+    _FingerprintAsyncHTTPTransport,
+    _IdCounter,
+    build_envelope,
+    decode_response,
+    parse_fingerprint,
+    wrap_httpx_error,
+)
 from ._version import __version__
 from .types import (
     Block,
@@ -46,11 +53,24 @@ class AsyncClient:
         *,
         timeout: float = 30.0,
         transport: httpx.AsyncBaseTransport | None = None,
+        fingerprint: str | None = None,
     ) -> None:
         if not token:
             raise ValueError("token must be a non-empty string")
         self._url = url.rstrip("/")
         self._token = token
+
+        if fingerprint is not None and transport is not None:
+            raise ValueError(
+                "specify either fingerprint= or transport=, not both — "
+                "the fingerprint param installs its own pinning transport"
+            )
+        if fingerprint is not None:
+            if not self._url.startswith("https://"):
+                raise ValueError(f"fingerprint= requires an https:// URL, got {self._url!r}")
+            expected = parse_fingerprint(fingerprint)
+            transport = _FingerprintAsyncHTTPTransport(expected)
+
         self._http = httpx.AsyncClient(
             timeout=timeout,
             transport=transport,
@@ -86,14 +106,18 @@ class AsyncClient:
         *,
         url_env: str = "WALLETD_URL",
         token_env: str = "WALLETD_AUTH_TOKEN",
+        fingerprint_env: str = "WALLETD_FINGERPRINT",
         **kwargs: Any,
     ) -> AsyncClient:
         url = os.environ.get(url_env)
         token = os.environ.get(token_env)
+        fingerprint = os.environ.get(fingerprint_env)
         if not url:
             raise RuntimeError(f"{url_env} is not set")
         if not token:
             raise RuntimeError(f"{token_env} is not set")
+        if fingerprint:
+            kwargs.setdefault("fingerprint", fingerprint)
         return cls(url, token, **kwargs)
 
     @classmethod
@@ -104,7 +128,8 @@ class AsyncClient:
         datadir: str = "~/.exfer-walletd",
         **kwargs: Any,
     ) -> AsyncClient:
-        token_path = Path(datadir).expanduser() / "token"
+        datadir_path = Path(datadir).expanduser()
+        token_path = datadir_path / "token"
         try:
             token = token_path.read_text().strip()
         except FileNotFoundError as exc:
@@ -113,6 +138,20 @@ class AsyncClient:
             ) from exc
         if not token:
             raise RuntimeError(f"walletd token file at {token_path} is empty")
+
+        if url.startswith("https://") and "fingerprint" not in kwargs:
+            fingerprint_path = datadir_path / "cert.fingerprint"
+            try:
+                fingerprint = fingerprint_path.read_text().strip()
+            except FileNotFoundError as exc:
+                raise FileNotFoundError(
+                    f"walletd fingerprint file not found at {fingerprint_path} — "
+                    f"is walletd running with --tls?"
+                ) from exc
+            if not fingerprint:
+                raise RuntimeError(f"walletd fingerprint file at {fingerprint_path} is empty")
+            kwargs["fingerprint"] = fingerprint
+
         return cls(url, token, **kwargs)
 
     # ------------------------------------------------------------------

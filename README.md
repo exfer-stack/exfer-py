@@ -93,13 +93,26 @@ from exfer_walletd import (
 shortfall comes from UTXOs reserved by other pending transfers from the
 same walletd — retry after they confirm.
 
+## TLS
+
+When walletd is started with `--tls` (v0.5.0+), point the SDK at the
+`https://` URL and supply the fingerprint walletd printed on first
+run:
+
+```python
+with Client.from_datadir(url="https://walletd.internal:8443") as c:
+    c.ping()          # auto-reads cert.fingerprint alongside token
+```
+
+The SDK pins the leaf cert by SHA-256, bypassing the CA chain
+entirely. Mismatches raise `FingerprintMismatchError`.
+
 ## Docs
 
 Full docs site: **<https://exfer-stack.github.io/exfer-py/>**.
 
 ## Status
 
-`0.5.0` — alpha. Breaking changes from 0.4.x; see
-[CHANGELOG.md](./CHANGELOG.md). Tested against `exfer-walletd >= 0.4.3`.
+`0.6.0` — alpha. Tested against `exfer-walletd >= 0.5.0` (TLS support).
 
 MIT licensed.

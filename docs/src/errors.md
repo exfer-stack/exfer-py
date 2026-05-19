@@ -31,6 +31,32 @@ except ExferError as e:          # belt-and-braces fallback
 `str(e)` always includes the code in the `[-32xxx] message` format,
 so plain `log.error(f"{e}")` is enough for production logs.
 
+## `FingerprintMismatchError`
+
+A subclass of `TransportError`, raised when the TLS leaf cert presented
+by the server doesn't match the SHA-256 fingerprint you pinned. Means
+*some* walletd answered, but it isn't the walletd you configured —
+typical causes: an MitM, the cert was regenerated server-side and the
+operator forgot to update the client config, or the wrong fingerprint
+was wired in. Always a hard fail; never retry.
+
+```python
+from exfer_walletd import Client, FingerprintMismatchError
+
+try:
+    with Client("https://walletd.internal:8443", token,
+                fingerprint="sha256:b669...") as c:
+        c.ping()
+except FingerprintMismatchError as e:
+    print("expected:", e.expected)
+    print("got:     ", e.actual)
+```
+
+Because it inherits `TransportError` (and therefore `ExferError`),
+existing `except TransportError` / `except ExferError` blocks catch it
+automatically — adding the specific class lets you distinguish "wrong
+walletd" from "walletd unreachable."
+
 ## Code → exception table
 
 Every code below is a subclass of `WalletdError` (and therefore of

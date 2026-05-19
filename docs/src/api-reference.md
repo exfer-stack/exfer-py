@@ -14,20 +14,40 @@ Hex strings (addresses, hashes, scripts, tx bytes) are lowercase, no
 
 ```python
 Client(url: str, token: str, *, timeout: float = 30.0,
-       transport: httpx.BaseTransport | None = None)
+       transport: httpx.BaseTransport | None = None,
+       fingerprint: str | None = None)
 
-AsyncClient(url, token, *, timeout=30.0, transport=None)
+AsyncClient(url, token, *, timeout=30.0, transport=None, fingerprint=None)
 ```
+
+`fingerprint` enables TLS pinning when walletd is run with `--tls`.
+Format is `"sha256:<lowercase-hex-64>"` (the exact string walletd
+writes to `<datadir>/cert.fingerprint` on first run). Requires an
+`https://` URL. The pinning transport replaces CA-chain validation —
+walletd's leaf cert is trusted iff its SHA-256 matches.
+
+`transport=` and `fingerprint=` are mutually exclusive — the latter
+installs a pinning transport itself, and accepting a custom one
+alongside would silently bypass verification.
 
 Alternate constructors:
 
 ```python
-Client.from_env(*, url_env="WALLETD_URL", token_env="WALLETD_AUTH_TOKEN")
-Client.from_datadir(*, url="http://127.0.0.1:8080", datadir="~/.exfer-walletd")
+Client.from_env(*, url_env="WALLETD_URL",
+                token_env="WALLETD_AUTH_TOKEN",
+                fingerprint_env="WALLETD_FINGERPRINT")
+
+Client.from_datadir(*, url="http://127.0.0.1:8080",
+                    datadir="~/.exfer-walletd")
 ```
 
+`from_env` reads `WALLETD_FINGERPRINT` if set (otherwise plaintext
+HTTP). `from_datadir` auto-reads `<datadir>/cert.fingerprint` when
+`url` is `https://`, raising `FileNotFoundError` if walletd hasn't
+been started with `--tls` yet.
+
 Raise `RuntimeError` (`from_env`) or `FileNotFoundError`
-(`from_datadir`) if the inputs are missing.
+(`from_datadir`) if the required inputs are missing.
 
 ---
 

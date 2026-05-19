@@ -24,6 +24,7 @@ from __future__ import annotations
 __all__ = [
     "AuthenticationError",
     "ExferError",
+    "FingerprintMismatchError",
     "InsufficientBalanceError",
     "InternalError",
     "InvalidParamsError",
@@ -76,6 +77,22 @@ class TransportError(ExferError):
 
     Wraps the underlying :mod:`httpx` exception via ``__cause__``.
     """
+
+
+class FingerprintMismatchError(TransportError):
+    """The TLS peer cert didn't match the expected SHA-256 fingerprint.
+
+    Means *some* walletd answered, but it isn't the walletd you pinned —
+    typical causes: an MitM, the cert was regenerated server-side and
+    the operator forgot to update the client config, or the wrong
+    fingerprint was wired into the client. Always a hard fail; never
+    retry.
+    """
+
+    def __init__(self, expected: str, actual: str) -> None:
+        super().__init__(f"server cert fingerprint mismatch: expected {expected}, got {actual}")
+        self.expected = expected
+        self.actual = actual
 
 
 class ProtocolError(WalletdError):

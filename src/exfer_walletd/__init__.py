@@ -24,6 +24,7 @@ from .client import Client
 from .errors import (
     AuthenticationError,
     ExferError,
+    FingerprintMismatchError,
     InsufficientBalanceError,
     InternalError,
     InvalidParamsError,
@@ -44,6 +45,7 @@ __all__ = [
     "AuthenticationError",
     "Client",
     "ExferError",
+    "FingerprintMismatchError",
     "InsufficientBalanceError",
     "InternalError",
     "InvalidParamsError",

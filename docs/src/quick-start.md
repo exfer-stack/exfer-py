@@ -29,6 +29,35 @@ with Client.from_datadir() as c:
     ...
 ```
 
+## TLS (production)
+
+When walletd is run with `--tls` (walletd `>= 0.5.0`), point the SDK
+at the `https://` URL and supply the SHA-256 fingerprint walletd
+printed on first run:
+
+```python
+# Explicit
+with Client(
+    "https://walletd.internal:8443",
+    token="…",
+    fingerprint="sha256:b66953c47263ac0da8192676e4770f0f799563322985c57246a6fab1bf24aa86",
+) as c:
+    c.ping()
+
+# From env vars (set WALLETD_FINGERPRINT alongside URL + TOKEN)
+with Client.from_env() as c:
+    c.ping()
+
+# Colocated with walletd — reads cert.fingerprint automatically
+with Client.from_datadir(url="https://127.0.0.1:8443") as c:
+    c.ping()
+```
+
+The SDK pins the cert by hash rather than verifying it against the
+CA chain — that's what makes the self-signed cert walletd generates
+actually trustable. If the server presents the wrong cert, the SDK
+raises [`FingerprintMismatchError`](./errors.md#fingerprintmismatcherror).
+
 ## Generate an address and watch its balance
 
 ```python

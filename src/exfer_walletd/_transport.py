@@ -5,6 +5,12 @@ This module is *internal* — the public surface is :class:`Client` and
 so the sync and async clients share exactly the same wire logic and
 neither can drift from the other.
 
+The fingerprint-pinning transports (:class:`_FingerprintHTTPTransport`,
+:class:`_FingerprintAsyncHTTPTransport`) wrap httpx's default transports
+and verify that the TLS leaf cert SHA-256 matches what the caller pinned
+— this is how the SDK trusts walletd's self-signed cert without involving
+the CA chain at all.
+
 There are intentionally no retries here. ``exfer-walletd`` already retries
 its own upstream node calls with linear backoff (see ``RetryPolicy`` in
 ``exfer-walletd/src/upstream/mod.rs``); stacking another retry on every
@@ -14,7 +20,10 @@ method in their own retry loop if walletd itself is flaky.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import itertools
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -22,6 +31,7 @@ import httpx
 
 from .errors import (
     AuthenticationError,
+    FingerprintMismatchError,
     ParseError,
     ProtocolError,
     TransportError,
@@ -157,8 +167,105 @@ def wrap_httpx_error(exc: httpx.HTTPError) -> TransportError:
 
 __all__ = [
     "JsonObject",
+    "_FingerprintAsyncHTTPTransport",
+    "_FingerprintHTTPTransport",
     "_IdCounter",
     "build_envelope",
     "decode_response",
+    "parse_fingerprint",
     "wrap_httpx_error",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Fingerprint pinning
+# ---------------------------------------------------------------------------
+
+
+_FINGERPRINT_RE = re.compile(r"^sha256:([0-9a-fA-F]{64})$")
+
+
+def parse_fingerprint(s: str) -> bytes:
+    """Validate and decode a `sha256:<hex>` fingerprint string.
+
+    The `sha256:` prefix is mandatory so we have room to add other hash
+    algorithms later without breaking existing config. Bare hex is
+    rejected with a clear error.
+    """
+    if not isinstance(s, str):
+        raise ValueError(f"fingerprint must be a string, got {type(s).__name__}")
+    m = _FINGERPRINT_RE.match(s.strip())
+    if not m:
+        raise ValueError(
+            f"invalid fingerprint {s!r}: expected 'sha256:<64-hex-char>' "
+            f"(walletd writes this in <datadir>/cert.fingerprint)"
+        )
+    return bytes.fromhex(m.group(1).lower())
+
+
+def _format_fingerprint(digest: bytes) -> str:
+    return f"sha256:{digest.hex()}"
+
+
+def _verify_peer_fingerprint(response: httpx.Response, expected: bytes) -> None:
+    """Extract the TLS peer cert from a response and compare its SHA-256.
+
+    Raises :class:`FingerprintMismatchError` on mismatch,
+    :class:`TransportError` if we couldn't reach a TLS stream at all
+    (e.g. the response came back over plain HTTP, meaning either walletd
+    isn't configured for TLS or something downgraded the connection).
+    """
+    stream = response.extensions.get("network_stream")
+    if stream is None:
+        raise TransportError(
+            "fingerprint pinning is configured but the response carried no "
+            "network stream; HTTPS is required when fingerprint= is set"
+        )
+    ssl_object = stream.get_extra_info("ssl_object")
+    if ssl_object is None:
+        raise TransportError(
+            "fingerprint pinning is configured but the connection isn't TLS; use an https:// URL"
+        )
+    # binary_form is positional-only on stdlib ssl._SSLSocket — passing
+    # it as kwarg blows up at runtime with TypeError.
+    peer_der = ssl_object.getpeercert(True)
+    if not peer_der:
+        raise TransportError("TLS peer presented no certificate")
+    actual = hashlib.sha256(peer_der).digest()
+    if not hmac.compare_digest(actual, expected):
+        raise FingerprintMismatchError(
+            expected=_format_fingerprint(expected),
+            actual=_format_fingerprint(actual),
+        )
+
+
+class _FingerprintHTTPTransport(httpx.HTTPTransport):
+    """Sync transport that pins the TLS leaf cert SHA-256.
+
+    `verify=False` tells httpx to skip CA-chain validation — we trust the
+    cert by hash, not by issuer. Hostname verification is also skipped:
+    a self-signed leaf that hashes to the pinned value is by definition
+    the right peer.
+    """
+
+    def __init__(self, expected_sha256: bytes, **kw: Any) -> None:
+        super().__init__(verify=False, **kw)
+        self._expected = expected_sha256
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        response = super().handle_request(request)
+        _verify_peer_fingerprint(response, self._expected)
+        return response
+
+
+class _FingerprintAsyncHTTPTransport(httpx.AsyncHTTPTransport):
+    """Async mirror of :class:`_FingerprintHTTPTransport`."""
+
+    def __init__(self, expected_sha256: bytes, **kw: Any) -> None:
+        super().__init__(verify=False, **kw)
+        self._expected = expected_sha256
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        response = await super().handle_async_request(request)
+        _verify_peer_fingerprint(response, self._expected)
+        return response

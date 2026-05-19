@@ -1,5 +1,12 @@
 """Spawn a real exfer-walletd binary for integration tests.
 
+Two fixtures:
+
+- ``walletd_process`` — plaintext HTTP on loopback. Yields
+  ``(url, token, datadir)``.
+- ``walletd_tls_process`` — HTTPS with `--tls`. Yields
+  ``(url, token, fingerprint, datadir)``. Requires walletd >= 0.5.0.
+
 We point ``--node-rpc`` at a closed loopback port so any RPC that *would*
 touch the upstream node fails fast — the tests here exercise only the
 walletd-local paths (``healthz``, ``ping``, ``generate_address``,
@@ -25,7 +32,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from exfer_walletd import Client
+from exfer_walletd import AsyncClient, Client
 
 DEFAULT_BINARY = (
     Path(__file__).resolve().parents[2].parent
@@ -51,12 +58,12 @@ def _walletd_binary() -> Path | None:
     return DEFAULT_BINARY if DEFAULT_BINARY.is_file() else None
 
 
-def _wait_for_healthz(url: str, timeout: float = 5.0) -> None:
+def _wait_for_healthz(url: str, timeout: float = 5.0, verify: bool = True) -> None:
     deadline = time.monotonic() + timeout
     last_exc: Exception | None = None
     while time.monotonic() < deadline:
         try:
-            r = httpx.get(f"{url}/healthz", timeout=0.5)
+            r = httpx.get(f"{url}/healthz", timeout=0.5, verify=verify)
             if r.status_code == 200:
                 return
         except httpx.HTTPError as exc:
@@ -65,13 +72,12 @@ def _wait_for_healthz(url: str, timeout: float = 5.0) -> None:
     raise RuntimeError(f"walletd at {url} never became healthy: {last_exc}")
 
 
-@pytest.fixture(scope="module")
-def walletd_process(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[str, str]]:
-    """Yield ``(url, token)`` for a freshly-spawned walletd.
-
-    Module-scoped so we pay the startup once per test file rather than per
-    test function. The datadir is throwaway and gets cleaned up by pytest.
-    """
+def _spawn_walletd(
+    datadir: Path,
+    port: int,
+    tls: bool,
+) -> subprocess.Popen[bytes]:
+    """Run walletd and return the live Popen; caller waits for healthz."""
     binary = _walletd_binary()
     if binary is None:
         pytest.skip(
@@ -80,29 +86,46 @@ def walletd_process(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[
             "or set WALLETD_BINARY=<path>"
         )
 
+    dead_node_port = _free_port()
+    env = {**os.environ, "WALLETD_DATADIR": str(datadir)}
+    args = [
+        str(binary),
+        "--bind",
+        f"127.0.0.1:{port}",
+        "--node-rpc",
+        f"http://127.0.0.1:{dead_node_port}",
+        "--upstream-attempts",
+        "1",  # don't waste 3 seconds on each unreachable-node call
+    ]
+    if tls:
+        args.append("--tls")
+
+    return subprocess.Popen(args, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+
+def _terminate(proc: subprocess.Popen[bytes]) -> None:
+    proc.terminate()
+    try:
+        proc.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+
+
+# ---------------------------------------------------------------------------
+# Plaintext fixture — exists for tests that don't care about TLS
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def walletd_process(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[tuple[str, str]]:
+    """Yield ``(url, token)`` for a freshly-spawned walletd (plaintext HTTP)."""
     datadir = tmp_path_factory.mktemp("walletd")
     port = _free_port()
     url = f"http://127.0.0.1:{port}"
 
-    # Point at a port nothing is listening on so upstream-touching RPCs
-    # fail fast instead of stalling.
-    dead_node_port = _free_port()
-
-    env = {**os.environ, "WALLETD_DATADIR": str(datadir)}
-    proc = subprocess.Popen(
-        [
-            str(binary),
-            "--bind",
-            f"127.0.0.1:{port}",
-            "--node-rpc",
-            f"http://127.0.0.1:{dead_node_port}",
-            "--upstream-attempts",
-            "1",  # don't waste 3 seconds on each unreachable-node call
-        ],
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
+    proc = _spawn_walletd(datadir, port, tls=False)
     try:
         _wait_for_healthz(url)
     except RuntimeError:
@@ -116,15 +139,61 @@ def walletd_process(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[
     try:
         yield url, token
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        _terminate(proc)
 
 
 @pytest.fixture
 def client(walletd_process: tuple[str, str]) -> Iterator[Client]:
     url, token = walletd_process
     with Client(url, token) as c:
+        yield c
+
+
+# ---------------------------------------------------------------------------
+# TLS fixture — covers the v0.5.0 --tls path
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def walletd_tls_process(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[tuple[str, str, str]]:
+    """Yield ``(url, token, fingerprint)`` for a `--tls` walletd."""
+    datadir = tmp_path_factory.mktemp("walletd-tls")
+    port = _free_port()
+    url = f"https://127.0.0.1:{port}"
+
+    proc = _spawn_walletd(datadir, port, tls=True)
+    try:
+        # verify=False on the healthz probe — we don't have the cert yet.
+        # Real client traffic will pin by fingerprint via the SDK.
+        _wait_for_healthz(url, verify=False)
+    except RuntimeError:
+        out, err = proc.communicate(timeout=2)
+        proc.kill()
+        raise RuntimeError(
+            f"walletd --tls failed to start.\nstdout:\n{out.decode()}\nstderr:\n{err.decode()}"
+        ) from None
+
+    token = (datadir / "token").read_text().strip()
+    fingerprint = (datadir / "cert.fingerprint").read_text().strip()
+    try:
+        yield url, token, fingerprint
+    finally:
+        _terminate(proc)
+
+
+@pytest.fixture
+def tls_client(walletd_tls_process: tuple[str, str, str]) -> Iterator[Client]:
+    url, token, fingerprint = walletd_tls_process
+    with Client(url, token, fingerprint=fingerprint) as c:
+        yield c
+
+
+@pytest.fixture
+async def async_tls_client(
+    walletd_tls_process: tuple[str, str, str],
+) -> Iterator[AsyncClient]:
+    url, token, fingerprint = walletd_tls_process
+    async with AsyncClient(url, token, fingerprint=fingerprint) as c:
         yield c

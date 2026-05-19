@@ -10,7 +10,14 @@ from typing import Any, cast
 
 import httpx
 
-from ._transport import _IdCounter, build_envelope, decode_response, wrap_httpx_error
+from ._transport import (
+    _FingerprintHTTPTransport,
+    _IdCounter,
+    build_envelope,
+    decode_response,
+    parse_fingerprint,
+    wrap_httpx_error,
+)
 from ._version import __version__
 from .types import (
     Block,
@@ -53,11 +60,27 @@ class Client:
         *,
         timeout: float = 30.0,
         transport: httpx.BaseTransport | None = None,
+        fingerprint: str | None = None,
     ) -> None:
         if not token:
             raise ValueError("token must be a non-empty string")
         self._url = url.rstrip("/")
         self._token = token
+
+        # `fingerprint=` and `transport=` are mutually exclusive: the former
+        # wires up our pinning transport, so handing in a custom one would
+        # silently bypass verification.
+        if fingerprint is not None and transport is not None:
+            raise ValueError(
+                "specify either fingerprint= or transport=, not both — "
+                "the fingerprint param installs its own pinning transport"
+            )
+        if fingerprint is not None:
+            if not self._url.startswith("https://"):
+                raise ValueError(f"fingerprint= requires an https:// URL, got {self._url!r}")
+            expected = parse_fingerprint(fingerprint)
+            transport = _FingerprintHTTPTransport(expected)
+
         self._http = httpx.Client(
             timeout=timeout,
             transport=transport,
@@ -93,20 +116,25 @@ class Client:
         *,
         url_env: str = "WALLETD_URL",
         token_env: str = "WALLETD_AUTH_TOKEN",
+        fingerprint_env: str = "WALLETD_FINGERPRINT",
         **kwargs: Any,
     ) -> Client:
-        """Read ``url`` and ``token`` from environment variables.
+        """Read ``url``, ``token``, and optionally ``fingerprint`` from env.
 
-        Raises :class:`RuntimeError` if either is missing — explicit failure
-        is better than silently falling back to a default that wouldn't be
-        what a deployed backend wants.
+        Raises :class:`RuntimeError` if ``url`` or ``token`` are missing —
+        explicit failure is better than silently falling back to a default
+        that wouldn't be what a deployed backend wants. ``fingerprint`` is
+        optional; if set and the URL is https, the SDK pins the TLS cert.
         """
         url = os.environ.get(url_env)
         token = os.environ.get(token_env)
+        fingerprint = os.environ.get(fingerprint_env)
         if not url:
             raise RuntimeError(f"{url_env} is not set")
         if not token:
             raise RuntimeError(f"{token_env} is not set")
+        if fingerprint:
+            kwargs.setdefault("fingerprint", fingerprint)
         return cls(url, token, **kwargs)
 
     @classmethod
@@ -117,13 +145,16 @@ class Client:
         datadir: str = "~/.exfer-walletd",
         **kwargs: Any,
     ) -> Client:
-        """Read the bearer token from a walletd datadir file (``<datadir>/token``).
+        """Read the bearer token (and TLS fingerprint when https) from walletd's datadir.
 
-        Ergonomic for "I'm running walletd locally on this host." On a
-        fresh walletd install the token file is created automatically on
-        first run with permissions ``0600``.
+        Ergonomic for "I'm running walletd locally on this host." On a fresh
+        walletd install the token file is created automatically on first
+        run with permissions ``0600``; if walletd was started with ``--tls``
+        it also writes ``cert.fingerprint`` alongside, which is consumed
+        here whenever ``url`` is https.
         """
-        token_path = Path(datadir).expanduser() / "token"
+        datadir_path = Path(datadir).expanduser()
+        token_path = datadir_path / "token"
         try:
             token = token_path.read_text().strip()
         except FileNotFoundError as exc:
@@ -132,6 +163,20 @@ class Client:
             ) from exc
         if not token:
             raise RuntimeError(f"walletd token file at {token_path} is empty")
+
+        if url.startswith("https://") and "fingerprint" not in kwargs:
+            fingerprint_path = datadir_path / "cert.fingerprint"
+            try:
+                fingerprint = fingerprint_path.read_text().strip()
+            except FileNotFoundError as exc:
+                raise FileNotFoundError(
+                    f"walletd fingerprint file not found at {fingerprint_path} — "
+                    f"is walletd running with --tls?"
+                ) from exc
+            if not fingerprint:
+                raise RuntimeError(f"walletd fingerprint file at {fingerprint_path} is empty")
+            kwargs["fingerprint"] = fingerprint
+
         return cls(url, token, **kwargs)
 
     # ------------------------------------------------------------------
