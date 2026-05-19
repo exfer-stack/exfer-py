@@ -28,9 +28,21 @@ with Client("http://127.0.0.1:8080", token="...") as c:
 ## What this is
 
 - A thin, typed wrapper over walletd's JSON-RPC. One method per RPC method.
-- Sync today; async client lands in 0.2.
+- Both sync (`Client`) and async (`AsyncClient`) — same surface, shared
+  wire layer so they can't drift.
 - Stdlib-only return types (`TypedDict`). Zero runtime overhead, full
   mypy/pyright support, no `pydantic` dependency forced on consumers.
+
+## Async
+
+```python
+from exfer_walletd import AsyncClient
+
+async with AsyncClient("http://127.0.0.1:8080", token) as c:
+    print(await c.healthz())
+    addr = (await c.generate_address())["address"]
+    print(await c.get_balance(addr))
+```
 
 ## What this isn't
 
@@ -85,6 +97,6 @@ retry after they confirm.
 
 ## Status
 
-`0.1.0` — alpha. Tested against `exfer-walletd >= 0.4.3`.
+`0.2.0` — alpha. Tested against `exfer-walletd >= 0.4.3`.
 
 MIT licensed.

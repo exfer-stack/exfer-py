@@ -1,0 +1,281 @@
+"""Async-client mirror of test_client_sync.
+
+We keep this trim — the per-method wire shapes are already exercised
+exhaustively in :mod:`test_client_sync`. Here we focus on the things
+that could realistically diverge: every method awaits and round-trips,
+the async context manager closes the underlying client, the env/datadir
+constructors work, and the same TypeError firing rules on ``get_block``
+hold.
+"""
+
+from __future__ import annotations
+
+import json
+from collections.abc import AsyncIterator, Iterator
+from pathlib import Path
+from typing import Any
+
+import httpx
+import pytest
+import respx
+
+from exfer_walletd import AsyncClient
+
+WALLETD_URL = "http://walletd.test"
+TOKEN = "test-token"
+ADDR = "8b0609a812de3b0103dd3b3e78be4a99ef1699b6f02820e1bc1dbcfc75681481"
+TX_ID = "a02ab025d75a295540d681f89da3f8bfed894e02cea721085facbf9ad4525c68"
+BLOCK_HASH = "17b95f159c3e51440207cc6648f655201bac84fd0e1e5a9ad8461e2d7a2932d5"
+
+
+def rpc_ok(result: object, *, request_id: int = 1) -> httpx.Response:
+    return httpx.Response(200, json={"jsonrpc": "2.0", "result": result, "id": request_id})
+
+
+@pytest.fixture
+def mock_walletd() -> Iterator[respx.MockRouter]:
+    with respx.mock(base_url=WALLETD_URL, assert_all_called=False) as router:
+        yield router
+
+
+@pytest.fixture
+async def client(mock_walletd: respx.MockRouter) -> AsyncIterator[AsyncClient]:
+    async with AsyncClient(WALLETD_URL, TOKEN) as c:
+        yield c
+
+
+pytestmark = pytest.mark.asyncio
+
+
+# ---------------------------------------------------------------------------
+# Every method round-trips
+# ---------------------------------------------------------------------------
+
+
+async def test_ping(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"ok": True}))
+    assert await client.ping() == {"ok": True}
+
+
+async def test_generate_address(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"address": ADDR, "pubkey": "de" * 32}))
+    out = await client.generate_address()
+    assert out["address"] == ADDR
+
+
+async def test_list_addresses(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"addresses": [ADDR]}))
+    assert await client.list_addresses() == [ADDR]
+
+
+async def test_get_balance(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"address": ADDR, "balance": 42}))
+    out = await client.get_balance(ADDR)
+    assert out["balance"] == 42
+
+
+async def test_get_address_utxos(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "address": ADDR,
+                "script_hex": None,
+                "tip_height": 1,
+                "truncated": False,
+                "utxos": [],
+            }
+        )
+    )
+    out = await client.get_address_utxos(ADDR)
+    assert out["utxos"] == []
+
+
+async def test_get_script_utxos(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "address": None,
+                "script_hex": "deadbeef",
+                "tip_height": 1,
+                "truncated": False,
+                "utxos": [],
+            }
+        )
+    )
+    out = await client.get_script_utxos("deadbeef")
+    assert out["script_hex"] == "deadbeef"
+
+
+async def test_get_block_height(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"height": 1, "block_id": BLOCK_HASH}))
+    out = await client.get_block_height()
+    assert out == {"height": 1, "block_id": BLOCK_HASH}
+
+
+def _block_result() -> dict[str, Any]:
+    return {
+        "hash": BLOCK_HASH,
+        "height": 1,
+        "prev_block_id": "00" * 32,
+        "state_root": "11" * 32,
+        "tx_root": "22" * 32,
+        "timestamp": 0,
+        "nonce": 0,
+        "difficulty_target": "ff" * 32,
+        "tx_count": 0,
+        "transactions": [],
+    }
+
+
+async def test_get_block_by_height(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    route = mock_walletd.post("/").mock(return_value=rpc_ok(_block_result()))
+    await client.get_block(height=1)
+    body = json.loads(route.calls.last.request.content)
+    assert body["params"] == {"height": 1}
+
+
+async def test_get_block_by_hash(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    route = mock_walletd.post("/").mock(return_value=rpc_ok(_block_result()))
+    await client.get_block(hash=BLOCK_HASH)
+    body = json.loads(route.calls.last.request.content)
+    assert body["params"] == {"hash": BLOCK_HASH}
+
+
+async def test_get_block_rejects_both() -> None:
+    c = AsyncClient(WALLETD_URL, TOKEN)
+    try:
+        with pytest.raises(TypeError, match="exactly one"):
+            await c.get_block(height=1, hash=BLOCK_HASH)
+    finally:
+        await c.aclose()
+
+
+async def test_get_block_rejects_neither() -> None:
+    c = AsyncClient(WALLETD_URL, TOKEN)
+    try:
+        with pytest.raises(TypeError, match="exactly one"):
+            await c.get_block()
+    finally:
+        await c.aclose()
+
+
+async def test_get_transaction(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "tx_id": TX_ID,
+                "tx_hex": "01000200deadbeef",
+                "in_mempool": True,
+                "block_hash": None,
+                "block_height": None,
+            }
+        )
+    )
+    out = await client.get_transaction(TX_ID)
+    assert out["in_mempool"] is True
+
+
+async def test_transfer_wire_field_is_from_not_from_(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok({"tx_id": TX_ID, "size": 1, "tip_height": 1, "submitted": True})
+    )
+    await client.transfer(from_=ADDR, to="ee" * 32, amount=10)
+    body = json.loads(route.calls.last.request.content)
+    assert body["params"] == {"from": ADDR, "to": "ee" * 32, "amount": 10}
+
+
+async def test_send_raw_transaction(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"tx_id": TX_ID}))
+    out = await client.send_raw_transaction("01000200")
+    assert out == {"tx_id": TX_ID}
+
+
+# ---------------------------------------------------------------------------
+# Errors propagate
+# ---------------------------------------------------------------------------
+
+
+async def test_authentication_error_propagates(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
+    from exfer_walletd import AuthenticationError
+
+    mock_walletd.post("/").mock(
+        return_value=httpx.Response(
+            401,
+            json={
+                "jsonrpc": "2.0",
+                "error": {"code": -32001, "message": "authentication required"},
+                "id": 1,
+            },
+        )
+    )
+    with pytest.raises(AuthenticationError):
+        await client.ping()
+
+
+async def test_transport_error_propagates(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
+    from exfer_walletd import TransportError
+
+    mock_walletd.post("/").mock(side_effect=httpx.ConnectError("nope"))
+    with pytest.raises(TransportError):
+        await client.ping()
+
+
+# ---------------------------------------------------------------------------
+# Healthz + lifecycle
+# ---------------------------------------------------------------------------
+
+
+async def test_healthz_ok(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.get("/healthz").mock(return_value=httpx.Response(200, text="ok\n"))
+    assert await client.healthz() is True
+
+
+async def test_healthz_no_auth_header(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    route = mock_walletd.get("/healthz").mock(return_value=httpx.Response(200, text="ok\n"))
+    await client.healthz()
+    assert "authorization" not in route.calls.last.request.headers
+
+
+async def test_healthz_transport_failure(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
+    mock_walletd.get("/healthz").mock(side_effect=httpx.ConnectError("down"))
+    assert await client.healthz() is False
+
+
+async def test_context_manager_closes_http() -> None:
+    # Don't rely on respx here; just confirm aclose is wired.
+    async with AsyncClient(WALLETD_URL, TOKEN) as c:
+        http = c._http
+        assert not http.is_closed
+    assert http.is_closed
+
+
+# ---------------------------------------------------------------------------
+# Alternate constructors
+# ---------------------------------------------------------------------------
+
+
+async def test_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("WALLETD_URL", WALLETD_URL)
+    monkeypatch.setenv("WALLETD_AUTH_TOKEN", "env-token")
+    c = AsyncClient.from_env()
+    try:
+        assert c._token == "env-token"
+    finally:
+        await c.aclose()
+
+
+async def test_from_datadir(tmp_path: Path) -> None:
+    (tmp_path / "token").write_text("file-tok")
+    c = AsyncClient.from_datadir(url="http://x", datadir=str(tmp_path))
+    try:
+        assert c._token == "file-tok"
+    finally:
+        await c.aclose()

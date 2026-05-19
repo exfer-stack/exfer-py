@@ -16,6 +16,7 @@ reference at https://exfer-stack.github.io/exfer-walletd/rpc-reference.html.
 from __future__ import annotations
 
 from ._version import __version__
+from .async_client import AsyncClient
 from .client import Client
 from .errors import (
     AuthenticationError,
@@ -46,6 +47,7 @@ from .types import (
 )
 
 __all__ = [
+    "AsyncClient",
     "AuthenticationError",
     "BalanceResult",
     "Block",

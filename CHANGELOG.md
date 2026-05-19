@@ -1,6 +1,12 @@
 # Changelog
 
-## 0.1.0 — unreleased
+## 0.2.0
+
+- `AsyncClient` mirrors every method on `Client`, on top of
+  `httpx.AsyncClient`. Sync and async share `_transport.py` so they
+  can't drift on the wire.
+
+## 0.1.0
 
 Initial release.
 
