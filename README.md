@@ -95,9 +95,13 @@ from exfer_walletd import (
 comes from UTXOs reserved by other pending transfers from the same walletd —
 retry after they confirm.
 
+## Docs
+
+Full docs site: **<https://exfer-stack.github.io/exfer-py/>**.
+
 ## Status
 
-`0.3.0` — alpha. Tested against `exfer-walletd >= 0.4.3` (integration CI
+`0.4.0` — alpha. Tested against `exfer-walletd >= 0.4.3` (integration CI
 job pins to `v0.4.3`).
 
 MIT licensed.

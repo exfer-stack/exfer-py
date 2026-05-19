@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0
+
+- mdBook docs site (`docs/`) deployed to GitHub Pages on every push to
+  main. Covers intro, install, quick-start, async usage, full API
+  reference, errors table, and FAQ. Local preview: `mdbook serve docs`.
+
 ## 0.3.0
 
 - `tests/integration/` spawns a real `exfer-walletd` binary in a temp
