@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0 — **breaking default**
+
+- `Client.from_datadir()` / `AsyncClient.from_datadir()` default URL
+  port flipped from `:8080` to `:7448`, matching walletd v0.7.0's new
+  default `--bind`. If you set `--bind` on the walletd side, this is a
+  no-op. If you relied on `:8080` defaults end-to-end, restart walletd
+  with `--bind :8080` (or update your config to `:7448`).
+- All examples in README + docs use `:7448`.
+
 ## 0.6.0
 
 - **TLS pinning** for walletd's new `--tls` mode (walletd v0.5.0+).

@@ -37,7 +37,7 @@ Client.from_env(*, url_env="WALLETD_URL",
                 token_env="WALLETD_AUTH_TOKEN",
                 fingerprint_env="WALLETD_FINGERPRINT")
 
-Client.from_datadir(*, url="http://127.0.0.1:8080",
+Client.from_datadir(*, url="http://127.0.0.1:7448",
                     datadir="~/.exfer-walletd")
 ```
 

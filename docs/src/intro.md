@@ -7,7 +7,7 @@ API.
 ```python
 from exfer_walletd import Client
 
-with Client("http://127.0.0.1:8080", token="...") as c:
+with Client("http://127.0.0.1:7448", token="...") as c:
     assert c.healthz()                # → bool
     addr = c.generate_address()       # → str
     bal  = c.get_balance(addr)        # → int (exfers)

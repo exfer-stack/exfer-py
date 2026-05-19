@@ -47,7 +47,7 @@ class Client:
 
     Example::
 
-        with Client("http://127.0.0.1:8080", token) as c:
+        with Client("http://127.0.0.1:7448", token) as c:
             addr = c.generate_address()           # → str
             bal  = c.get_balance(addr)            # → int
             print(addr, bal)
@@ -141,7 +141,7 @@ class Client:
     def from_datadir(
         cls,
         *,
-        url: str = "http://127.0.0.1:8080",
+        url: str = "http://127.0.0.1:7448",
         datadir: str = "~/.exfer-walletd",
         **kwargs: Any,
     ) -> Client:

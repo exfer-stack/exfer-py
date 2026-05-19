@@ -67,7 +67,7 @@ def test_parse_fingerprint_rejects_bad_input(bad: str) -> None:
 
 
 def test_client_with_https_and_fingerprint_installs_pinning_transport() -> None:
-    c = Client("https://walletd.example:8443", TOKEN, fingerprint=GOOD_FP)
+    c = Client("https://walletd.example:7448", TOKEN, fingerprint=GOOD_FP)
     try:
         # The httpx.Client builds a wrapper around our transport; the
         # underlying transport on the default pool is what we passed in.
@@ -79,7 +79,7 @@ def test_client_with_https_and_fingerprint_installs_pinning_transport() -> None:
 
 def test_client_http_with_fingerprint_raises() -> None:
     with pytest.raises(ValueError, match="requires an https:// URL"):
-        Client("http://walletd.example:8080", TOKEN, fingerprint=GOOD_FP)
+        Client("http://walletd.example:7448", TOKEN, fingerprint=GOOD_FP)
 
 
 def test_client_rejects_both_transport_and_fingerprint() -> None:
@@ -92,7 +92,7 @@ def test_client_rejects_both_transport_and_fingerprint() -> None:
 
 
 def test_async_client_with_https_and_fingerprint_installs_pinning_transport() -> None:
-    c = AsyncClient("https://walletd.example:8443", TOKEN, fingerprint=GOOD_FP)
+    c = AsyncClient("https://walletd.example:7448", TOKEN, fingerprint=GOOD_FP)
     try:
         assert isinstance(c._http._transport, _FingerprintAsyncHTTPTransport)
     finally:
@@ -181,7 +181,7 @@ def test_fingerprint_mismatch_is_a_transport_error_too() -> None:
 
 
 def test_from_env_reads_fingerprint_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("WALLETD_URL", "https://walletd.example:8443")
+    monkeypatch.setenv("WALLETD_URL", "https://walletd.example:7448")
     monkeypatch.setenv("WALLETD_AUTH_TOKEN", "env-token")
     monkeypatch.setenv("WALLETD_FINGERPRINT", GOOD_FP)
     c = Client.from_env()
@@ -192,7 +192,7 @@ def test_from_env_reads_fingerprint_when_set(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_from_env_skips_fingerprint_when_unset(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("WALLETD_URL", "http://walletd.example:8080")
+    monkeypatch.setenv("WALLETD_URL", "http://walletd.example:7448")
     monkeypatch.setenv("WALLETD_AUTH_TOKEN", "env-token")
     monkeypatch.delenv("WALLETD_FINGERPRINT", raising=False)
     c = Client.from_env()
@@ -205,7 +205,7 @@ def test_from_env_skips_fingerprint_when_unset(monkeypatch: pytest.MonkeyPatch) 
 def test_from_datadir_reads_cert_fingerprint_when_https(tmp_path: Path) -> None:
     (tmp_path / "token").write_text("tok\n")
     (tmp_path / "cert.fingerprint").write_text(f"{GOOD_FP}\n")
-    c = Client.from_datadir(url="https://localhost:8443", datadir=str(tmp_path))
+    c = Client.from_datadir(url="https://localhost:7448", datadir=str(tmp_path))
     try:
         assert isinstance(c._http._transport, _FingerprintHTTPTransport)
     finally:
@@ -216,7 +216,7 @@ def test_from_datadir_skips_fingerprint_when_http(tmp_path: Path) -> None:
     (tmp_path / "token").write_text("tok\n")
     # cert.fingerprint may or may not exist; either way http must NOT read it.
     (tmp_path / "cert.fingerprint").write_text(f"{GOOD_FP}\n")
-    c = Client.from_datadir(url="http://localhost:8080", datadir=str(tmp_path))
+    c = Client.from_datadir(url="http://localhost:7448", datadir=str(tmp_path))
     try:
         assert not isinstance(c._http._transport, _FingerprintHTTPTransport)
     finally:
@@ -226,4 +226,4 @@ def test_from_datadir_skips_fingerprint_when_http(tmp_path: Path) -> None:
 def test_from_datadir_https_without_fingerprint_file_raises(tmp_path: Path) -> None:
     (tmp_path / "token").write_text("tok\n")
     with pytest.raises(FileNotFoundError, match="fingerprint file not found"):
-        Client.from_datadir(url="https://localhost:8443", datadir=str(tmp_path))
+        Client.from_datadir(url="https://localhost:7448", datadir=str(tmp_path))

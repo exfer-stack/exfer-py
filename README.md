@@ -10,7 +10,7 @@ pip install exfer-walletd
 ```python
 from exfer_walletd import Client
 
-with Client("http://127.0.0.1:8080", token="...") as c:
+with Client("http://127.0.0.1:7448", token="...") as c:
     assert c.healthz()                # True
     addr = c.generate_address()       # str
     bal  = c.get_balance(addr)        # int (exfers)
@@ -36,7 +36,7 @@ with Client("http://127.0.0.1:8080", token="...") as c:
 ```python
 from exfer_walletd import AsyncClient
 
-async with AsyncClient("http://127.0.0.1:8080", token) as c:
+async with AsyncClient("http://127.0.0.1:7448", token) as c:
     assert await c.healthz()
     addr = await c.generate_address()
     print(await c.get_balance(addr))
@@ -54,7 +54,7 @@ async with AsyncClient("http://127.0.0.1:8080", token) as c:
 
 ```python
 # 1. Explicit
-Client("http://127.0.0.1:8080", "your-token")
+Client("http://127.0.0.1:7448", "your-token")
 
 # 2. From env vars (deployed backends): WALLETD_URL + WALLETD_AUTH_TOKEN
 Client.from_env()
@@ -100,7 +100,7 @@ When walletd is started with `--tls` (v0.5.0+), point the SDK at the
 run:
 
 ```python
-with Client.from_datadir(url="https://walletd.internal:8443") as c:
+with Client.from_datadir(url="https://<walletd-host>:7448") as c:
     c.ping()          # auto-reads cert.fingerprint alongside token
 ```
 

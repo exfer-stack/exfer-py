@@ -110,7 +110,7 @@ def test_unexpected_http_status_is_transport_error() -> None:
 
 
 def test_url_trailing_slash_is_stripped() -> None:
-    # Make sure http://x:8080/ doesn't become http://x:8080//
+    # Make sure http://x:7448/ doesn't become http://x:7448//
     c = Client("http://x.test/", "tok")
     assert c._url == "http://x.test"
 

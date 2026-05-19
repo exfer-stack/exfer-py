@@ -11,7 +11,7 @@ Three ways, depending on how your deployment hands out the token.
 from exfer_walletd import Client
 
 # 1. Explicit (works everywhere)
-c = Client("http://127.0.0.1:8080", "your-token")
+c = Client("http://127.0.0.1:7448", "your-token")
 
 # 2. From env vars (deployed backends)
 #    Set WALLETD_URL + WALLETD_AUTH_TOKEN
@@ -38,7 +38,7 @@ printed on first run:
 ```python
 # Explicit
 with Client(
-    "https://walletd.internal:8443",
+    "https://<walletd-host>:7448",
     token="…",
     fingerprint="sha256:b66953c47263ac0da8192676e4770f0f799563322985c57246a6fab1bf24aa86",
 ) as c:
@@ -49,7 +49,7 @@ with Client.from_env() as c:
     c.ping()
 
 # Colocated with walletd — reads cert.fingerprint automatically
-with Client.from_datadir(url="https://127.0.0.1:8443") as c:
+with Client.from_datadir(url="https://127.0.0.1:7448") as c:
     c.ping()
 ```
 

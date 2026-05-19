@@ -44,7 +44,7 @@ was wired in. Always a hard fail; never retry.
 from exfer_walletd import Client, FingerprintMismatchError
 
 try:
-    with Client("https://walletd.internal:8443", token,
+    with Client("https://<walletd-host>:7448", token,
                 fingerprint="sha256:b669...") as c:
         c.ping()
 except FingerprintMismatchError as e:

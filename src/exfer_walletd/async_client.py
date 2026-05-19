@@ -124,7 +124,7 @@ class AsyncClient:
     def from_datadir(
         cls,
         *,
-        url: str = "http://127.0.0.1:8080",
+        url: str = "http://127.0.0.1:7448",
         datadir: str = "~/.exfer-walletd",
         **kwargs: Any,
     ) -> AsyncClient:
