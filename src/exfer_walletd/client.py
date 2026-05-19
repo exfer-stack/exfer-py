@@ -20,6 +20,7 @@ from ._transport import (
 )
 from ._version import __version__
 from .types import (
+    BalanceEntry,
     Block,
     ListBalancesResult,
     Tip,
@@ -241,18 +242,62 @@ class Client:
         """Address list with cached balance + UTXO count per row.
 
         Walletd serves this entirely from its in-memory cache (no
-        upstream RPC per call), kept warm by a background refresher.
-        Requires ``--cache-profile != off`` server-side to return live
-        data; with caching off, every row carries ``stale=True`` and
-        ``balance=None`` (the cache exists, just never populated).
+        upstream RPC per call). The cache is populated by:
+
+        - ``generate_address`` seeds (balance=0, ``stale=True``)
+        - ``transfer`` commits (invalidate from/to)
+        - explicit :meth:`refresh_address` / :meth:`refresh_addresses`
+          calls (the right primitive at scale — see walletd v0.14.0
+          release notes and operations docs for the 4N math)
+        - automatic background polling if the walletd was started with
+          ``--cache-refresh-secs N`` (off by default in v0.14.0
+          ``balanced``)
 
         ``stale=True`` is a hint, not an error — treat the value as a
-        lower bound. For strict freshness, call :meth:`get_balance` on
-        individual addresses.
+        lower bound. For fresh-now values, call :meth:`refresh_address`
+        per-address.
         """
         result = self._call("list_balances", None)
         if not isinstance(result, dict) or "addresses" not in result:
             raise RuntimeError(f"list_balances returned unexpected shape: {result!r}")
+        return cast(ListBalancesResult, result)
+
+    def refresh_address(self, address: str) -> BalanceEntry:
+        """Force a synchronous cache refresh for ``address``.
+
+        Bypasses TTL — always hits upstream, then CAS-writes L2 + L3.
+        Returns the post-refresh :class:`BalanceEntry`.
+
+        Use when the application knows an event affected this specific
+        address: user clicked "check deposit", a sweep just completed,
+        a webhook from elsewhere fired. Per-call upstream failures
+        (rate limit, transport error) surface in the row's
+        ``last_error`` field — the call returns 200 with the row,
+        not an exception.
+
+        Requires walletd v0.14.0+.
+        """
+        result = self._call("refresh_address", {"address": address})
+        if not isinstance(result, dict) or "address" not in result:
+            raise RuntimeError(f"refresh_address returned unexpected shape: {result!r}")
+        return cast(BalanceEntry, result["address"])
+
+    def refresh_addresses(self, addresses: list[str]) -> ListBalancesResult:
+        """Batch forced refresh. Bounded-concurrency on the server
+        side (default 8). Returns the same envelope as
+        :meth:`list_balances` — drop-in replacement when the caller
+        knows a known set of addresses just changed.
+
+        Don't use this to poll-everything every N seconds. That's what
+        the server-side ``--cache-refresh-secs N`` flag is for; the
+        4N math (see operations docs) means it's only safe on
+        dedicated nodes or with very small N.
+
+        Requires walletd v0.14.0+.
+        """
+        result = self._call("refresh_addresses", {"addresses": addresses})
+        if not isinstance(result, dict) or "addresses" not in result:
+            raise RuntimeError(f"refresh_addresses returned unexpected shape: {result!r}")
         return cast(ListBalancesResult, result)
 
     def get_balance(self, address: str) -> int:

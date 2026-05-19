@@ -26,6 +26,7 @@ from ._transport import (
 )
 from ._version import __version__
 from .types import (
+    BalanceEntry,
     Block,
     ListBalancesResult,
     Tip,
@@ -196,15 +197,36 @@ class AsyncClient:
         return [str(a) for a in addresses]
 
     async def list_balances(self) -> ListBalancesResult:
-        """Address list with cached balance + UTXO count per row.
-
-        Async counterpart of :meth:`Client.list_balances`. Serves from
-        walletd's in-memory cache (no upstream RPC per call). Requires
-        ``--cache-profile != off`` server-side for live data.
+        """Async counterpart of :meth:`Client.list_balances`. Serves
+        from walletd's in-memory cache (no upstream RPC per call).
+        Cache populated by ``generate_address`` seeds, ``transfer``
+        commits, explicit :meth:`refresh_address` /
+        :meth:`refresh_addresses` calls, and optional auto-polling
+        (``--cache-refresh-secs``).
         """
         result = await self._call("list_balances", None)
         if not isinstance(result, dict) or "addresses" not in result:
             raise RuntimeError(f"list_balances returned unexpected shape: {result!r}")
+        return cast(ListBalancesResult, result)
+
+    async def refresh_address(self, address: str) -> BalanceEntry:
+        """Async counterpart of :meth:`Client.refresh_address`. Force
+        a synchronous cache refresh for one address. Requires walletd
+        v0.14.0+.
+        """
+        result = await self._call("refresh_address", {"address": address})
+        if not isinstance(result, dict) or "address" not in result:
+            raise RuntimeError(f"refresh_address returned unexpected shape: {result!r}")
+        return cast(BalanceEntry, result["address"])
+
+    async def refresh_addresses(self, addresses: list[str]) -> ListBalancesResult:
+        """Async counterpart of :meth:`Client.refresh_addresses`.
+        Batch forced refresh; server-side bounded concurrency.
+        Requires walletd v0.14.0+.
+        """
+        result = await self._call("refresh_addresses", {"addresses": addresses})
+        if not isinstance(result, dict) or "addresses" not in result:
+            raise RuntimeError(f"refresh_addresses returned unexpected shape: {result!r}")
         return cast(ListBalancesResult, result)
 
     async def get_balance(self, address: str) -> int:

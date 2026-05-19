@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.9.0
+
+- **New: `Client.refresh_address(addr) -> BalanceEntry`** and
+  `Client.refresh_addresses(list[str]) -> ListBalancesResult`
+  (`AsyncClient` mirrors). Force a synchronous cache refresh —
+  bypasses TTL, hits upstream, CAS-writes the L2 + L3 cache, returns
+  the post-refresh row(s).
+
+  Use when the app knows a specific event affected an address (user
+  clicked check deposit, internal sweep completed, webhook fired
+  from elsewhere). Per-call upstream failures (rate limit, transport
+  error) surface in the row's `last_error` field — both methods
+  return 200 with the row, not raise.
+
+  Requires walletd v0.14.0+.
+
+  ```python
+  row = client.refresh_address("ab" * 32)
+  print(row["balance"], row["stale"], row["last_error"])
+  ```
+
+- **Behavior context (walletd-side breaking change in v0.14.0)**: the
+  `balanced` cache profile no longer auto-polls by default
+  (`refresh_interval = 0`). Pre-v0.14.0 walletd users upgrading will
+  find `list_balances` rows stuck at their last-known values until
+  the app calls `refresh_address` / `refresh_addresses`, or until
+  the operator opts back into auto-polling via
+  `--cache-refresh-secs N`. See walletd's operations docs for the
+  4N math that motivated the breaking change.
+
+- `list_balances` docstrings now point at the new refresh methods
+  as the right primitive for "I know X changed, give me a fresh
+  value now."
+
 ## 0.8.0
 
 - **New: `Client.list_balances()` / `AsyncClient.list_balances()`**.
