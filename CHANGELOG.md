@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.8.0
+
+- **New: `Client.list_balances()` / `AsyncClient.list_balances()`**.
+  Returns every managed address with its cached balance + UTXO count
+  + freshness envelope in a single RPC. The exchange dashboard pattern
+  that used to cost `N+1` RPCs (1 × `list_addresses` + N ×
+  `get_balance`) now costs **one**.
+
+  ```python
+  result = client.list_balances()
+  result["tip"]["height"]                  # 589354
+  result["addresses"][0]["balance"]        # 1500000 (or None if cold)
+  result["addresses"][0]["stale"]          # False
+  ```
+
+  Requires walletd v0.13.0+ with `--cache-profile != off`. See the
+  [`list_balances` RPC docs](https://exfer-stack.github.io/exfer-walletd/rpc-reference.html#list_balances)
+  for the row shape and freshness semantics.
+
+- **New types**: `BalanceEntry`, `ListBalancesResult` (TypedDicts).
+  Importable from `exfer_walletd` for annotation.
+
+- `list_addresses` docstring updated to point at `list_balances` when
+  the caller wants per-address balance bundles.
+
+- Caches on the walletd side are transparent to existing SDK callers
+  — `get_balance` / `get_address_utxos` / `get_transaction` /
+  `get_block` / `get_block_hash` wire shapes are unchanged, they just
+  get cheaper.
+
 ## 0.7.0 — **breaking default**
 
 - `Client.from_datadir()` / `AsyncClient.from_datadir()` default URL

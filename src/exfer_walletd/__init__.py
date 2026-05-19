@@ -38,17 +38,19 @@ from .errors import (
     WalletExistsError,
     WalletNotFoundError,
 )
-from .types import Tip
+from .types import BalanceEntry, ListBalancesResult, Tip
 
 __all__ = [
     "AsyncClient",
     "AuthenticationError",
+    "BalanceEntry",
     "Client",
     "ExferError",
     "FingerprintMismatchError",
     "InsufficientBalanceError",
     "InternalError",
     "InvalidParamsError",
+    "ListBalancesResult",
     "MethodNotFoundError",
     "ParseError",
     "ProtocolError",

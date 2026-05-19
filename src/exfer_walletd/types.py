@@ -21,7 +21,9 @@ from __future__ import annotations
 from typing import NamedTuple, TypedDict
 
 __all__ = [
+    "BalanceEntry",
     "Block",
+    "ListBalancesResult",
     "Tip",
     "Transaction",
     "TransferResult",
@@ -85,3 +87,39 @@ class TransferResult(TypedDict):
     size: int
     tip_height: int
     submitted: bool
+
+
+class BalanceEntry(TypedDict):
+    """One row from :meth:`Client.list_balances`.
+
+    ``stale=True`` means "this is a lower bound — the address had at
+    least this balance the last time we successfully heard from
+    upstream." It is a hint, not an error. Callers that need strict
+    freshness should call :meth:`Client.get_balance` per-address to
+    trigger a synchronous cache-aside fetch.
+    """
+
+    address: str
+    balance: int | None
+    utxo_count: int | None
+    fetched_at_ms_ago: int | None
+    tip_at_fetch: int | None
+    stale: bool
+    last_error: str | None
+
+
+class _Tip(TypedDict):
+    height: int | None
+    block_id: str | None
+
+
+class ListBalancesResult(TypedDict):
+    """Envelope returned by :meth:`Client.list_balances` and by
+    ``list_addresses(with_balance=True)``. The ``tip`` block records the
+    chain head as walletd saw it most recently; ``as_of_ms_ago`` is how
+    long ago that was.
+    """
+
+    tip: _Tip
+    as_of_ms_ago: int
+    addresses: list[BalanceEntry]

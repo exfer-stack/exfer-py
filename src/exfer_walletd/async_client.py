@@ -27,6 +27,7 @@ from ._transport import (
 from ._version import __version__
 from .types import (
     Block,
+    ListBalancesResult,
     Tip,
     Transaction,
     TransferResult,
@@ -181,6 +182,11 @@ class AsyncClient:
         return str(result["address"])
 
     async def list_addresses(self) -> list[str]:
+        """Every address walletd holds a key for, sorted ascending.
+
+        For per-address balances, prefer :meth:`list_balances` — single
+        cached RPC instead of N+1.
+        """
         result = await self._call("list_addresses", None)
         if not isinstance(result, dict) or "addresses" not in result:
             raise RuntimeError(f"list_addresses returned unexpected shape: {result!r}")
@@ -188,6 +194,18 @@ class AsyncClient:
         if not isinstance(addresses, list):
             raise RuntimeError(f"list_addresses.addresses is not a list: {addresses!r}")
         return [str(a) for a in addresses]
+
+    async def list_balances(self) -> ListBalancesResult:
+        """Address list with cached balance + UTXO count per row.
+
+        Async counterpart of :meth:`Client.list_balances`. Serves from
+        walletd's in-memory cache (no upstream RPC per call). Requires
+        ``--cache-profile != off`` server-side for live data.
+        """
+        result = await self._call("list_balances", None)
+        if not isinstance(result, dict) or "addresses" not in result:
+            raise RuntimeError(f"list_balances returned unexpected shape: {result!r}")
+        return cast(ListBalancesResult, result)
 
     async def get_balance(self, address: str) -> int:
         result = await self._call("get_balance", {"address": address})

@@ -21,6 +21,7 @@ from ._transport import (
 from ._version import __version__
 from .types import (
     Block,
+    ListBalancesResult,
     Tip,
     Transaction,
     TransferResult,
@@ -221,7 +222,13 @@ class Client:
         return str(result["address"])
 
     def list_addresses(self) -> list[str]:
-        """Every address walletd holds a key for, sorted ascending."""
+        """Every address walletd holds a key for, sorted ascending.
+
+        For the address-list + per-address balance bundle, call
+        :meth:`list_balances` directly — that path is cheaper than
+        running ``N+1`` calls (``list_addresses`` + N ``get_balance``)
+        from the client side.
+        """
         result = self._call("list_addresses", None)
         if not isinstance(result, dict) or "addresses" not in result:
             raise RuntimeError(f"list_addresses returned unexpected shape: {result!r}")
@@ -229,6 +236,24 @@ class Client:
         if not isinstance(addresses, list):
             raise RuntimeError(f"list_addresses.addresses is not a list: {addresses!r}")
         return [str(a) for a in addresses]
+
+    def list_balances(self) -> ListBalancesResult:
+        """Address list with cached balance + UTXO count per row.
+
+        Walletd serves this entirely from its in-memory cache (no
+        upstream RPC per call), kept warm by a background refresher.
+        Requires ``--cache-profile != off`` server-side to return live
+        data; with caching off, every row carries ``stale=True`` and
+        ``balance=None`` (the cache exists, just never populated).
+
+        ``stale=True`` is a hint, not an error — treat the value as a
+        lower bound. For strict freshness, call :meth:`get_balance` on
+        individual addresses.
+        """
+        result = self._call("list_balances", None)
+        if not isinstance(result, dict) or "addresses" not in result:
+            raise RuntimeError(f"list_balances returned unexpected shape: {result!r}")
+        return cast(ListBalancesResult, result)
 
     def get_balance(self, address: str) -> int:
         """Confirmed balance for ``address``, in exfers."""
