@@ -10,6 +10,13 @@ from typing import Any, cast
 
 import httpx
 
+from ._params import (
+    _addr_paginated_params,
+    _htlc_list_params,
+    _htlc_lock_params,
+    _payment_uri_params,
+    _simulate_transfer_params,
+)
 from ._transport import (
     _FingerprintHTTPTransport,
     _IdCounter,
@@ -20,11 +27,27 @@ from ._transport import (
 )
 from ._version import __version__
 from .types import (
+    AddressHistoryResult,
     Block,
+    ContractStatsRow,
+    FollowerStatus,
+    HtlcClaimResult,
+    HtlcListResult,
+    HtlcLockResult,
+    HtlcReclaimResult,
+    HtlcRecord,
+    HtlcRole,
+    HtlcState,
+    ListSettlementsResult,
+    PaymentUri,
+    SimulateHtlcLockResult,
+    SimulateTransferResult,
+    SpentByResult,
     Tip,
     Transaction,
     TransferResult,
     UtxosResult,
+    WaitForTxResult,
 )
 
 __all__ = ["Client"]
@@ -306,6 +329,314 @@ class Client:
         if not isinstance(result, dict) or "tx_id" not in result:
             raise RuntimeError(f"send_raw_transaction returned unexpected shape: {result!r}")
         return str(result["tx_id"])
+
+    def htlc_lock(
+        self,
+        *,
+        from_: str,
+        receiver: str,
+        hash_lock: str,
+        timeout: int,
+        amount: int,
+        fee: int | None = None,
+        fee_rate: int | None = None,
+        max_fee: int | None = None,
+    ) -> HtlcLockResult:
+        """Lock ``amount`` exfers from ``from_`` into a new HTLC output.
+
+        ``receiver`` is the receiver's 32-byte pubkey (64 hex). ``timeout``
+        is the absolute block height past which ``from_`` can reclaim.
+        ``fee`` and ``fee_rate`` are mutually exclusive — omit both to
+        let walletd pick its default fee rate.
+
+        Returns a receipt with the lock transaction id and the
+        ``output_index`` at which the HTLC output sits. Save those two
+        values: every other HTLC operation needs them.
+        """
+        return cast(
+            HtlcLockResult,
+            self._call("htlc_lock", _htlc_lock_params(
+                from_, receiver, hash_lock, timeout, amount, fee, fee_rate, max_fee,
+            )),
+        )
+
+    def htlc_claim(
+        self,
+        *,
+        from_: str,
+        lock_tx_id: str,
+        preimage: str,
+        sender: str,
+        timeout: int,
+        output_index: int = 0,
+        fee: int | None = None,
+    ) -> HtlcClaimResult:
+        """Spend an HTLC via the hash arm by revealing ``preimage``.
+
+        ``from_`` is the receiver wallet (it claims and receives the funds).
+        ``preimage`` is hex (any length — the hash arm imposes no length
+        bound). ``sender`` + ``timeout`` are needed to reconstruct the
+        original locking script so walletd can build a valid spend.
+        """
+        params: dict[str, Any] = {
+            "from": from_,
+            "lock_tx_id": lock_tx_id,
+            "output_index": output_index,
+            "preimage": preimage,
+            "sender": sender,
+            "timeout": timeout,
+        }
+        if fee is not None:
+            params["fee"] = fee
+        return cast(HtlcClaimResult, self._call("htlc_claim", params))
+
+    def htlc_reclaim(
+        self,
+        *,
+        from_: str,
+        lock_tx_id: str,
+        receiver: str,
+        hash_lock: str,
+        timeout: int,
+        output_index: int = 0,
+        fee: int | None = None,
+    ) -> HtlcReclaimResult:
+        """Reclaim an expired HTLC via the timeout arm.
+
+        ``from_`` is the original sender. Walletd checks the chain tip
+        and refuses to broadcast if ``current_height <= timeout``.
+        """
+        params: dict[str, Any] = {
+            "from": from_,
+            "lock_tx_id": lock_tx_id,
+            "output_index": output_index,
+            "receiver": receiver,
+            "hash_lock": hash_lock,
+            "timeout": timeout,
+        }
+        if fee is not None:
+            params["fee"] = fee
+        return cast(HtlcReclaimResult, self._call("htlc_reclaim", params))
+
+    # ------------------------------------------------------------------
+    # Dry-run simulation (Read scope — never broadcasts)
+    # ------------------------------------------------------------------
+
+    def simulate_transfer(
+        self,
+        *,
+        from_: str,
+        outputs: list[Mapping[str, Any]],
+        fee: int | None = None,
+        fee_rate: int | None = None,
+        max_fee: int | None = None,
+    ) -> SimulateTransferResult:
+        """Compute the exact ``(size, fee, fee_rate, ...)`` a real
+        :meth:`transfer` would produce, without broadcasting or reserving
+        UTXOs. Use this to prove a cost ceiling before committing to
+        spend.
+
+        ``outputs`` is a list of ``{"to": addr_hex, "amount": exfers}``.
+        Up to 16 entries.
+        """
+        return cast(
+            SimulateTransferResult,
+            self._call("simulate_transfer", _simulate_transfer_params(
+                from_, outputs, fee, fee_rate, max_fee,
+            )),
+        )
+
+    def simulate_htlc_lock(
+        self,
+        *,
+        from_: str,
+        receiver: str,
+        hash_lock: str,
+        timeout: int,
+        amount: int,
+        fee: int | None = None,
+        fee_rate: int | None = None,
+        max_fee: int | None = None,
+    ) -> SimulateHtlcLockResult:
+        """Dry-run version of :meth:`htlc_lock`. No broadcast, no reservation."""
+        return cast(
+            SimulateHtlcLockResult,
+            self._call("simulate_htlc_lock", _htlc_lock_params(
+                from_, receiver, hash_lock, timeout, amount, fee, fee_rate, max_fee,
+            )),
+        )
+
+    # ------------------------------------------------------------------
+    # Payment URI codec (pure, no I/O)
+    # ------------------------------------------------------------------
+
+    def payment_uri_encode(
+        self,
+        *,
+        address: str,
+        amount: int | None = None,
+        memo: str | None = None,
+        hash_lock: str | None = None,
+        timeout: int | None = None,
+        label: str | None = None,
+    ) -> str:
+        """Build a BIP21-style ``exfer:`` URI. Returns the URI string."""
+        params = _payment_uri_params(address, amount, memo, hash_lock, timeout, label)
+        result = self._call("payment_uri_encode", params)
+        if not isinstance(result, dict) or "uri" not in result:
+            raise RuntimeError(f"payment_uri_encode returned unexpected shape: {result!r}")
+        return str(result["uri"])
+
+    def payment_uri_decode(self, uri: str) -> PaymentUri:
+        """Parse an ``exfer:`` URI back into its component fields."""
+        return cast(PaymentUri, self._call("payment_uri_decode", {"uri": uri}))
+
+    # ------------------------------------------------------------------
+    # HTLC observability (walletd v1.9 — owned-key index)
+    # ------------------------------------------------------------------
+
+    def htlc_status(self, lock_tx_id: str, output_index: int = 0) -> HtlcRecord:
+        """Return the current :class:`HtlcRecord` for a lock outpoint.
+
+        Raises :class:`~exfer_walletd.errors.WalletdError` if walletd has
+        no tracked HTLC at this outpoint. For arbitrary (non-owned)
+        addresses, configure ``--indexer-rpc`` on walletd so this routes
+        through the multi-tenant index.
+        """
+        params = {"lock_tx_id": lock_tx_id, "output_index": output_index}
+        return cast(HtlcRecord, self._call("htlc_status", params))
+
+    def htlc_list(
+        self,
+        *,
+        role: HtlcRole | None = None,
+        state: HtlcState | list[HtlcState] | None = None,
+        since_height: int | None = None,
+        address: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> HtlcListResult:
+        """List HTLCs matching the filter, paginated.
+
+        ``state`` accepts either a single :data:`~exfer_walletd.types.HtlcState`
+        or a list of them; ``role`` filters on observer relationship.
+        The returned dict contains ``htlcs`` (list of :class:`HtlcRecord`)
+        and optionally ``next_cursor`` — pass it back to fetch the next
+        page.
+        """
+        params = _htlc_list_params(role, state, since_height, address, limit, cursor)
+        return cast(HtlcListResult, self._call("htlc_list", params))
+
+    def htlc_forget(self, lock_tx_id: str, output_index: int = 0) -> bool:
+        """Remove a settled HTLC entry from walletd's index.
+
+        Only Claimed / Reclaimed entries may be forgotten; pending ones
+        raise :class:`~exfer_walletd.errors.WalletdError`. Returns
+        ``True`` if an entry was removed, ``False`` if nothing was
+        tracked at this outpoint.
+        """
+        params = {"lock_tx_id": lock_tx_id, "output_index": output_index}
+        result = self._call("htlc_forget", params)
+        if not isinstance(result, dict) or "removed" not in result:
+            raise RuntimeError(f"htlc_forget returned unexpected shape: {result!r}")
+        return bool(result["removed"])
+
+    def get_follower_status(self) -> FollowerStatus:
+        """Snapshot of walletd's block-follower state — height, lag, counts."""
+        return cast(FollowerStatus, self._call("get_follower_status", None))
+
+    def wait_for_tx(
+        self,
+        tx_id: str,
+        *,
+        min_confirmations: int = 1,
+        timeout_secs: int = 60,
+    ) -> WaitForTxResult:
+        """Block until ``tx_id`` has ``min_confirmations`` behind it.
+
+        ``timeout_secs`` is clamped server-side at 600. On timeout raises
+        :class:`~exfer_walletd.errors.WaitTimeoutError`; that is not a
+        terminal failure of the tx itself — it may still confirm later.
+        """
+        params = {
+            "tx_id": tx_id,
+            "min_confirmations": min_confirmations,
+            "timeout_secs": timeout_secs,
+        }
+        return cast(WaitForTxResult, self._call("wait_for_tx", params))
+
+    # ------------------------------------------------------------------
+    # Indexer-delegated (walletd v1.9.1 — multi-tenant queries)
+    # ------------------------------------------------------------------
+
+    def list_settlements(
+        self,
+        address: str,
+        *,
+        contract_hash: str | None = None,
+        since_height: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> ListSettlementsResult:
+        """History of settled HTLCs involving ``address``.
+
+        Raises :class:`~exfer_walletd.errors.IndexerNotConfiguredError`
+        if walletd was not started with ``--indexer-rpc``.
+        """
+        params = _addr_paginated_params(address, contract_hash, since_height, limit, cursor)
+        return cast(ListSettlementsResult, self._call("list_settlements", params))
+
+    def contract_stats(
+        self,
+        address: str,
+        *,
+        contract_hash: str | None = None,
+    ) -> list[ContractStatsRow]:
+        """Aggregate stats per contract type for ``address``.
+
+        Without ``contract_hash``, returns one row per distinct contract
+        the address has settled. With ``contract_hash``, returns a single
+        row (or empty list) for that contract.
+        """
+        params: dict[str, Any] = {"address": address}
+        if contract_hash is not None:
+            params["contract_hash"] = contract_hash
+        result = self._call("contract_stats", params)
+        if not isinstance(result, dict) or "stats" not in result:
+            raise RuntimeError(f"contract_stats returned unexpected shape: {result!r}")
+        return cast(list[ContractStatsRow], result["stats"])
+
+    def get_address_history(
+        self,
+        address: str,
+        *,
+        since_height: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> AddressHistoryResult:
+        """Activity timeline for ``address`` — every input + output it appears in."""
+        params = _addr_paginated_params(address, None, since_height, limit, cursor)
+        return cast(AddressHistoryResult, self._call("get_address_history", params))
+
+    def htlc_lookup_by_hashlock(self, hash_lock: str) -> list[HtlcRecord]:
+        """Every tracked HTLC committed to ``hash_lock`` — canonical
+        atomic-swap fingerprint.
+        """
+        result = self._call("htlc_lookup_by_hashlock", {"hash_lock": hash_lock})
+        if not isinstance(result, dict) or "htlcs" not in result:
+            raise RuntimeError(f"htlc_lookup_by_hashlock returned unexpected shape: {result!r}")
+        return cast(list[HtlcRecord], result["htlcs"])
+
+    def get_output_spent_by(self, tx_id: str, output_index: int) -> SpentByResult:
+        """Reverse-spend lookup: which tx spent ``(tx_id, output_index)``?
+
+        The ``source`` field reveals where the answer came from
+        (``"indexer-cache"``, ``"node"``, or ``"fallback-unknown-method"``
+        for older nodes without the RPC). ``spent: false`` means
+        nobody has spent it (yet) given the indexer's current view.
+        """
+        params = {"tx_id": tx_id, "output_index": output_index}
+        return cast(SpentByResult, self._call("get_output_spent_by", params))
 
     # ------------------------------------------------------------------
     # Internal

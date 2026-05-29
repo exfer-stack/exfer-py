@@ -16,6 +16,13 @@ from typing import Any, cast
 
 import httpx
 
+from ._params import (
+    _addr_paginated_params,
+    _htlc_list_params,
+    _htlc_lock_params,
+    _payment_uri_params,
+    _simulate_transfer_params,
+)
 from ._transport import (
     _FingerprintAsyncHTTPTransport,
     _IdCounter,
@@ -26,11 +33,27 @@ from ._transport import (
 )
 from ._version import __version__
 from .types import (
+    AddressHistoryResult,
     Block,
+    ContractStatsRow,
+    FollowerStatus,
+    HtlcClaimResult,
+    HtlcListResult,
+    HtlcLockResult,
+    HtlcReclaimResult,
+    HtlcRecord,
+    HtlcRole,
+    HtlcState,
+    ListSettlementsResult,
+    PaymentUri,
+    SimulateHtlcLockResult,
+    SimulateTransferResult,
+    SpentByResult,
     Tip,
     Transaction,
     TransferResult,
     UtxosResult,
+    WaitForTxResult,
 )
 
 __all__ = ["AsyncClient"]
@@ -244,6 +267,229 @@ class AsyncClient:
         if not isinstance(result, dict) or "tx_id" not in result:
             raise RuntimeError(f"send_raw_transaction returned unexpected shape: {result!r}")
         return str(result["tx_id"])
+
+    async def htlc_lock(
+        self,
+        *,
+        from_: str,
+        receiver: str,
+        hash_lock: str,
+        timeout: int,
+        amount: int,
+        fee: int | None = None,
+        fee_rate: int | None = None,
+        max_fee: int | None = None,
+    ) -> HtlcLockResult:
+        return cast(
+            HtlcLockResult,
+            await self._call("htlc_lock", _htlc_lock_params(
+                from_, receiver, hash_lock, timeout, amount, fee, fee_rate, max_fee,
+            )),
+        )
+
+    async def htlc_claim(
+        self,
+        *,
+        from_: str,
+        lock_tx_id: str,
+        preimage: str,
+        sender: str,
+        timeout: int,
+        output_index: int = 0,
+        fee: int | None = None,
+    ) -> HtlcClaimResult:
+        params: dict[str, Any] = {
+            "from": from_,
+            "lock_tx_id": lock_tx_id,
+            "output_index": output_index,
+            "preimage": preimage,
+            "sender": sender,
+            "timeout": timeout,
+        }
+        if fee is not None:
+            params["fee"] = fee
+        return cast(HtlcClaimResult, await self._call("htlc_claim", params))
+
+    async def htlc_reclaim(
+        self,
+        *,
+        from_: str,
+        lock_tx_id: str,
+        receiver: str,
+        hash_lock: str,
+        timeout: int,
+        output_index: int = 0,
+        fee: int | None = None,
+    ) -> HtlcReclaimResult:
+        params: dict[str, Any] = {
+            "from": from_,
+            "lock_tx_id": lock_tx_id,
+            "output_index": output_index,
+            "receiver": receiver,
+            "hash_lock": hash_lock,
+            "timeout": timeout,
+        }
+        if fee is not None:
+            params["fee"] = fee
+        return cast(HtlcReclaimResult, await self._call("htlc_reclaim", params))
+
+    # ------------------------------------------------------------------
+    # Dry-run simulation
+    # ------------------------------------------------------------------
+
+    async def simulate_transfer(
+        self,
+        *,
+        from_: str,
+        outputs: list[Mapping[str, Any]],
+        fee: int | None = None,
+        fee_rate: int | None = None,
+        max_fee: int | None = None,
+    ) -> SimulateTransferResult:
+        return cast(
+            SimulateTransferResult,
+            await self._call("simulate_transfer", _simulate_transfer_params(
+                from_, outputs, fee, fee_rate, max_fee,
+            )),
+        )
+
+    async def simulate_htlc_lock(
+        self,
+        *,
+        from_: str,
+        receiver: str,
+        hash_lock: str,
+        timeout: int,
+        amount: int,
+        fee: int | None = None,
+        fee_rate: int | None = None,
+        max_fee: int | None = None,
+    ) -> SimulateHtlcLockResult:
+        return cast(
+            SimulateHtlcLockResult,
+            await self._call("simulate_htlc_lock", _htlc_lock_params(
+                from_, receiver, hash_lock, timeout, amount, fee, fee_rate, max_fee,
+            )),
+        )
+
+    # ------------------------------------------------------------------
+    # Payment URI codec
+    # ------------------------------------------------------------------
+
+    async def payment_uri_encode(
+        self,
+        *,
+        address: str,
+        amount: int | None = None,
+        memo: str | None = None,
+        hash_lock: str | None = None,
+        timeout: int | None = None,
+        label: str | None = None,
+    ) -> str:
+        params = _payment_uri_params(address, amount, memo, hash_lock, timeout, label)
+        result = await self._call("payment_uri_encode", params)
+        if not isinstance(result, dict) or "uri" not in result:
+            raise RuntimeError(f"payment_uri_encode returned unexpected shape: {result!r}")
+        return str(result["uri"])
+
+    async def payment_uri_decode(self, uri: str) -> PaymentUri:
+        return cast(PaymentUri, await self._call("payment_uri_decode", {"uri": uri}))
+
+    # ------------------------------------------------------------------
+    # HTLC observability
+    # ------------------------------------------------------------------
+
+    async def htlc_status(self, lock_tx_id: str, output_index: int = 0) -> HtlcRecord:
+        params = {"lock_tx_id": lock_tx_id, "output_index": output_index}
+        return cast(HtlcRecord, await self._call("htlc_status", params))
+
+    async def htlc_list(
+        self,
+        *,
+        role: HtlcRole | None = None,
+        state: HtlcState | list[HtlcState] | None = None,
+        since_height: int | None = None,
+        address: str | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> HtlcListResult:
+        params = _htlc_list_params(role, state, since_height, address, limit, cursor)
+        return cast(HtlcListResult, await self._call("htlc_list", params))
+
+    async def htlc_forget(self, lock_tx_id: str, output_index: int = 0) -> bool:
+        params = {"lock_tx_id": lock_tx_id, "output_index": output_index}
+        result = await self._call("htlc_forget", params)
+        if not isinstance(result, dict) or "removed" not in result:
+            raise RuntimeError(f"htlc_forget returned unexpected shape: {result!r}")
+        return bool(result["removed"])
+
+    async def get_follower_status(self) -> FollowerStatus:
+        return cast(FollowerStatus, await self._call("get_follower_status", None))
+
+    async def wait_for_tx(
+        self,
+        tx_id: str,
+        *,
+        min_confirmations: int = 1,
+        timeout_secs: int = 60,
+    ) -> WaitForTxResult:
+        params = {
+            "tx_id": tx_id,
+            "min_confirmations": min_confirmations,
+            "timeout_secs": timeout_secs,
+        }
+        return cast(WaitForTxResult, await self._call("wait_for_tx", params))
+
+    # ------------------------------------------------------------------
+    # Indexer-delegated
+    # ------------------------------------------------------------------
+
+    async def list_settlements(
+        self,
+        address: str,
+        *,
+        contract_hash: str | None = None,
+        since_height: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> ListSettlementsResult:
+        params = _addr_paginated_params(address, contract_hash, since_height, limit, cursor)
+        return cast(ListSettlementsResult, await self._call("list_settlements", params))
+
+    async def contract_stats(
+        self,
+        address: str,
+        *,
+        contract_hash: str | None = None,
+    ) -> list[ContractStatsRow]:
+        params: dict[str, Any] = {"address": address}
+        if contract_hash is not None:
+            params["contract_hash"] = contract_hash
+        result = await self._call("contract_stats", params)
+        if not isinstance(result, dict) or "stats" not in result:
+            raise RuntimeError(f"contract_stats returned unexpected shape: {result!r}")
+        return cast(list[ContractStatsRow], result["stats"])
+
+    async def get_address_history(
+        self,
+        address: str,
+        *,
+        since_height: int | None = None,
+        limit: int | None = None,
+        cursor: str | None = None,
+    ) -> AddressHistoryResult:
+        params = _addr_paginated_params(address, None, since_height, limit, cursor)
+        return cast(AddressHistoryResult, await self._call("get_address_history", params))
+
+    async def htlc_lookup_by_hashlock(self, hash_lock: str) -> list[HtlcRecord]:
+        result = await self._call("htlc_lookup_by_hashlock", {"hash_lock": hash_lock})
+        if not isinstance(result, dict) or "htlcs" not in result:
+            raise RuntimeError(f"htlc_lookup_by_hashlock returned unexpected shape: {result!r}")
+        return cast(list[HtlcRecord], result["htlcs"])
+
+    async def get_output_spent_by(self, tx_id: str, output_index: int) -> SpentByResult:
+        params = {"tx_id": tx_id, "output_index": output_index}
+        return cast(SpentByResult, await self._call("get_output_spent_by", params))
 
     # ------------------------------------------------------------------
     # Internal

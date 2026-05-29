@@ -25,6 +25,7 @@ __all__ = [
     "AuthenticationError",
     "ExferError",
     "FingerprintMismatchError",
+    "IndexerNotConfiguredError",
     "InsufficientBalanceError",
     "InternalError",
     "InvalidParamsError",
@@ -34,6 +35,7 @@ __all__ = [
     "TransportError",
     "TxAuthError",
     "UpstreamError",
+    "WaitTimeoutError",
     "WalletExistsError",
     "WalletNotFoundError",
     "WalletdError",
@@ -179,6 +181,33 @@ class TxAuthError(WalletdError):
     code = -32030
 
 
+class WaitTimeoutError(WalletdError):
+    """-32040: :meth:`wait_for_tx` did not see the required confirmation depth
+    within the requested ``timeout_secs``.
+
+    Doesn't mean the tx failed — it may still confirm a moment later.
+    Common cause is a small ``timeout_secs`` set against a fee that
+    miners deprioritised. Re-call ``wait_for_tx`` to keep watching, or
+    consult ``get_transaction`` for the latest snapshot.
+    """
+
+    code = -32040
+
+
+class IndexerNotConfiguredError(WalletdError):
+    """-32041: caller invoked a method that needs the indexer service, but
+    walletd was not started with ``--indexer-rpc``.
+
+    Owned-key queries still work — only methods that ask about addresses
+    walletd doesn't have keys for (``list_settlements``, ``contract_stats``,
+    ``get_address_history``, ``htlc_lookup_by_hashlock``, ``get_output_spent_by``)
+    surface this. Wire an indexer endpoint into walletd's config to
+    enable them.
+    """
+
+    code = -32041
+
+
 class InsufficientBalanceError(WalletdError):
     """-32031: wallet can't cover ``amount + fee``.
 
@@ -231,6 +260,8 @@ _CODE_MAP: dict[int, type[WalletdError]] = {
     -32020: UpstreamError,
     -32030: TxAuthError,
     -32031: InsufficientBalanceError,
+    -32040: WaitTimeoutError,
+    -32041: IndexerNotConfiguredError,
 }
 
 

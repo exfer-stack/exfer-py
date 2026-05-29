@@ -1,5 +1,82 @@
 # Changelog
 
+## 0.8.0 — walletd v1.9 + v1.9.1 surface
+
+Adds the seventeen JSON-RPC methods walletd grew over its v1.7 → v1.9.1
+series. Purely additive — every method that worked in 0.7.0 still
+returns the same shape, with the same default behaviour, against the
+same default port.
+
+### New methods (mirrored on `Client` + `AsyncClient`)
+
+**HTLC spend trio (walletd v1.7+):**
+
+- `htlc_lock(*, from_, receiver, hash_lock, timeout, amount, fee=, fee_rate=, max_fee=)`
+- `htlc_claim(*, from_, lock_tx_id, preimage, sender, timeout, output_index=0, fee=)`
+- `htlc_reclaim(*, from_, lock_tx_id, receiver, hash_lock, timeout, output_index=0, fee=)`
+
+**Dry-run simulation (v1.9):**
+
+- `simulate_transfer(*, from_, outputs, fee=, fee_rate=, max_fee=)`
+- `simulate_htlc_lock(*, from_, receiver, hash_lock, timeout, amount, fee=, fee_rate=, max_fee=)`
+
+Both methods compute the exact `(size, fee, fee_rate, ...)` a real call
+would produce. No broadcast, no UTXO reservation. Lets an agent prove a
+cost ceiling before committing to spend.
+
+**Payment URI codec (v1.9, pure):**
+
+- `payment_uri_encode(*, address, amount=, memo=, hash_lock=, timeout=, label=)`
+- `payment_uri_decode(uri)`
+
+BIP21-style `exfer:<address>?amount=...&memo=...` round trip.
+
+**HTLC observability (v1.9, walletd's own index):**
+
+- `htlc_status(lock_tx_id, output_index=0)`
+- `htlc_list(*, role=, state=, since_height=, address=, limit=, cursor=)`
+- `htlc_forget(lock_tx_id, output_index=0)`
+- `get_follower_status()`
+- `wait_for_tx(tx_id, *, min_confirmations=1, timeout_secs=60)`
+
+`htlc_list` accepts either a single `HtlcState` or a list (untagged on
+the wire, walletd handles both).
+
+**Indexer-delegated (v1.9.1, multi-tenant queries):**
+
+- `list_settlements(address, *, contract_hash=, since_height=, limit=, cursor=)`
+- `contract_stats(address, *, contract_hash=)`
+- `get_address_history(address, *, since_height=, limit=, cursor=)`
+- `htlc_lookup_by_hashlock(hash_lock)`
+- `get_output_spent_by(tx_id, output_index)`
+
+These five methods need walletd to be running with `--indexer-rpc`
+pointing at an `exfer-indexer` instance. When the flag isn't set the
+SDK raises the new `IndexerNotConfiguredError`.
+
+### New result shapes in `exfer_walletd.types`
+
+`HtlcRecord` / `HtlcParams` / `HtlcClaimRecord` / `HtlcReclaimRecord` /
+`HtlcState` (Literal) / `HtlcRole` (Literal) / `HtlcLockResult` /
+`HtlcClaimResult` / `HtlcReclaimResult` / `SimulateTransferResult` /
+`SimulateHtlcLockResult` / `FollowerStatus` / `WaitForTxResult` /
+`PaymentUri` / `SettlementRecord` / `ListSettlementsResult` /
+`ContractStatsRow` / `AddressHistoryRow` / `AddressHistoryResult` /
+`HtlcListResult` / `SpentByResult`.
+
+### New errors
+
+- `WaitTimeoutError` (-32040) — `wait_for_tx` didn't see the depth in
+  time. Not terminal; the tx may still confirm.
+- `IndexerNotConfiguredError` (-32041) — caller hit an indexer-delegated
+  method on a walletd without `--indexer-rpc` configured.
+
+### Compatibility
+
+- Default URL / port unchanged (`http://127.0.0.1:7448`).
+- All pre-existing methods preserve their signatures + return types.
+- No new required runtime dependencies (`httpx` only, same as 0.7.0).
+
 ## 0.7.0 — **breaking default**
 
 - `Client.from_datadir()` / `AsyncClient.from_datadir()` default URL
