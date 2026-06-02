@@ -261,10 +261,16 @@ class AsyncClient:
         to: str,
         amount: int,
         fee: int | None = None,
+        datum: str | None = None,
     ) -> TransferResult:
+        """``datum`` (hex, <= 4096 bytes) is a generic app-defined on-chain
+        blob carried by the payment; meaning is the application's. Read it
+        back from ``get_transaction`` (``outputs[].datum``)."""
         params: dict[str, Any] = {"from": from_, "to": to, "amount": amount}
         if fee is not None:
             params["fee"] = fee
+        if datum is not None:
+            params["datum"] = datum
         return cast(TransferResult, await self._call("transfer", params))
 
     async def send_raw_transaction(self, tx_hex: str) -> str:

@@ -310,6 +310,7 @@ class Client:
         to: str,
         amount: int,
         fee: int | None = None,
+        datum: str | None = None,
     ) -> TransferResult:
         """Build, sign, and broadcast a payment from a managed wallet.
 
@@ -322,10 +323,16 @@ class Client:
         doesn't hold the key for ``from_``, and
         :class:`~exfer_walletd.errors.InsufficientBalanceError` if the
         wallet can't cover ``amount + fee``.
+
+        ``datum`` (hex, <= 4096 bytes) is a generic app-defined on-chain
+        blob carried by the payment; meaning is the application's. Read it
+        back from ``get_transaction`` (``outputs[].datum``).
         """
         params: dict[str, Any] = {"from": from_, "to": to, "amount": amount}
         if fee is not None:
             params["fee"] = fee
+        if datum is not None:
+            params["datum"] = datum
         return cast(TransferResult, self._call("transfer", params))
 
     def send_raw_transaction(self, tx_hex: str) -> str:
