@@ -30,9 +30,6 @@ __all__ = [
     "Block",
     "ContractStatsRow",
     "DetectSwapsResult",
-    "NameScriptResult",
-    "ResolveNameResult",
-    "SwapGroup",
     "FollowerStatus",
     "HtlcClaimRecord",
     "HtlcClaimResult",
@@ -45,18 +42,21 @@ __all__ = [
     "HtlcRole",
     "HtlcState",
     "ListSettlementsResult",
+    "NameScriptResult",
     "PaymentUri",
+    "ResolveNameResult",
     "SettlementRecord",
+    "SignMessageResult",
     "SimulateHtlcLockResult",
     "SimulateTransferResult",
-    "SignMessageResult",
     "SpentByResult",
-    "VerifyMessageResult",
+    "SwapGroup",
     "Tip",
     "Transaction",
     "TransferResult",
     "Utxo",
     "UtxosResult",
+    "VerifyMessageResult",
     "WaitForPaymentResult",
     "WaitForTxResult",
 ]
@@ -320,7 +320,7 @@ class SwapGroup(TypedDict):
     # A set of HTLCs sharing one hash_lock — the on-chain fingerprint of
     # an atomic swap.
     hash_lock: str
-    htlcs: list["HtlcRecord"]
+    htlcs: list[HtlcRecord]
 
 
 class DetectSwapsResult(TypedDict):

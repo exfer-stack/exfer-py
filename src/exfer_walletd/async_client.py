@@ -35,13 +35,9 @@ from ._version import __version__
 from .types import (
     AddressHistoryResult,
     AttestationEdgesResult,
-    DetectSwapsResult,
-    NameScriptResult,
-    ResolveNameResult,
-    SignMessageResult,
-    VerifyMessageResult,
     Block,
     ContractStatsRow,
+    DetectSwapsResult,
     FollowerStatus,
     HtlcClaimResult,
     HtlcListResult,
@@ -51,7 +47,10 @@ from .types import (
     HtlcRole,
     HtlcState,
     ListSettlementsResult,
+    NameScriptResult,
     PaymentUri,
+    ResolveNameResult,
+    SignMessageResult,
     SimulateHtlcLockResult,
     SimulateTransferResult,
     SpentByResult,
@@ -59,6 +58,7 @@ from .types import (
     Transaction,
     TransferResult,
     UtxosResult,
+    VerifyMessageResult,
     WaitForPaymentResult,
     WaitForTxResult,
 )
@@ -289,9 +289,19 @@ class AsyncClient:
     ) -> HtlcLockResult:
         return cast(
             HtlcLockResult,
-            await self._call("htlc_lock", _htlc_lock_params(
-                from_, receiver, hash_lock, timeout, amount, fee, fee_rate, max_fee,
-            )),
+            await self._call(
+                "htlc_lock",
+                _htlc_lock_params(
+                    from_,
+                    receiver,
+                    hash_lock,
+                    timeout,
+                    amount,
+                    fee,
+                    fee_rate,
+                    max_fee,
+                ),
+            ),
         )
 
     async def htlc_claim(
@@ -355,9 +365,16 @@ class AsyncClient:
     ) -> SimulateTransferResult:
         return cast(
             SimulateTransferResult,
-            await self._call("simulate_transfer", _simulate_transfer_params(
-                from_, outputs, fee, fee_rate, max_fee,
-            )),
+            await self._call(
+                "simulate_transfer",
+                _simulate_transfer_params(
+                    from_,
+                    outputs,
+                    fee,
+                    fee_rate,
+                    max_fee,
+                ),
+            ),
         )
 
     async def simulate_htlc_lock(
@@ -374,9 +391,19 @@ class AsyncClient:
     ) -> SimulateHtlcLockResult:
         return cast(
             SimulateHtlcLockResult,
-            await self._call("simulate_htlc_lock", _htlc_lock_params(
-                from_, receiver, hash_lock, timeout, amount, fee, fee_rate, max_fee,
-            )),
+            await self._call(
+                "simulate_htlc_lock",
+                _htlc_lock_params(
+                    from_,
+                    receiver,
+                    hash_lock,
+                    timeout,
+                    amount,
+                    fee,
+                    fee_rate,
+                    max_fee,
+                ),
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -467,9 +494,7 @@ class AsyncClient:
             "min_amount": min_amount,
             "timeout_secs": timeout_secs,
         }
-        return cast(
-            WaitForPaymentResult, await self._call("wait_for_payment", params)
-        )
+        return cast(WaitForPaymentResult, await self._call("wait_for_payment", params))
 
     # ------------------------------------------------------------------
     # Indexer-delegated
