@@ -41,9 +41,7 @@ from .types import (
     HtlcRole,
     HtlcState,
     ListSettlementsResult,
-    NameScriptResult,
     PaymentUri,
-    ResolveNameResult,
     SignMessageResult,
     SimulateHtlcLockResult,
     SimulateTransferResult,
@@ -700,35 +698,6 @@ class Client:
         if address is not None:
             params["address"] = address
         return cast(VerifyMessageResult, self._call("verify_message", params))
-
-    def name_script(self, name: str) -> NameScriptResult:
-        """Derive the burn-script a name maps to (pure, no upstream call)."""
-        return cast(NameScriptResult, self._call("name_script", {"name": name}))
-
-    def resolve_name(self, name: str) -> ResolveNameResult:
-        """Resolve a name to the address it points to (highest-cumulative-burn
-        owner's declared target, else the owner). Requires an indexer-backed
-        walletd."""
-        return cast(ResolveNameResult, self._call("resolve_name", {"name": name}))
-
-    def name_claim(
-        self,
-        name: str,
-        *,
-        from_: str,
-        amount: int = 1000,
-        target: str | None = None,
-        fee: int | None = None,
-    ) -> dict[str, Any]:
-        """Claim (or out-bid for) a name by burning ``amount`` to its script.
-        Ownership is the highest cumulative burn. ``target`` declares where
-        the name points (default: ``from_``)."""
-        params: dict[str, Any] = {"name": name, "from": from_, "amount": amount}
-        if target is not None:
-            params["target"] = target
-        if fee is not None:
-            params["fee"] = fee
-        return cast("dict[str, Any]", self._call("name_claim", params))
 
     def get_attestation_edges(
         self,

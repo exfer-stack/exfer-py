@@ -42,9 +42,7 @@ __all__ = [
     "HtlcRole",
     "HtlcState",
     "ListSettlementsResult",
-    "NameScriptResult",
     "PaymentUri",
-    "ResolveNameResult",
     "SettlementRecord",
     "SignMessageResult",
     "SimulateHtlcLockResult",
@@ -268,24 +266,6 @@ class WaitForTxResult(TypedDict):
     block_id: str
     block_height: int
     confirmations: int
-
-
-class NameScriptResult(TypedDict):
-    name: str
-    script: str  # the derived 32-byte burn-script (hex64)
-
-
-class ResolveNameResult(TypedDict, total=False):
-    # Highest-cumulative-burn name registry. `address` is where the name
-    # currently points (winner's declared target, else the winner). `owner`
-    # is the winning (highest burn) claimant. All null/0 when unclaimed.
-    name: str
-    script: str
-    address: str | None
-    owner: str | None
-    total_burned: int
-    claim_tx_id: str | None
-    claim_height: int | None
 
 
 class SignMessageResult(TypedDict):
