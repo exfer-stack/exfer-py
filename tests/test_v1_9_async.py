@@ -164,9 +164,7 @@ async def test_htlc_reclaim(client: AsyncClient, mock_walletd: respx.MockRouter)
     assert out["tx_id"] == TX_ID
 
 
-async def test_simulate_transfer(
-    client: AsyncClient, mock_walletd: respx.MockRouter
-) -> None:
+async def test_simulate_transfer(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
@@ -190,9 +188,7 @@ async def test_simulate_transfer(
     assert out["fee"] == 1_000
 
 
-async def test_simulate_htlc_lock(
-    client: AsyncClient, mock_walletd: respx.MockRouter
-) -> None:
+async def test_simulate_htlc_lock(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
@@ -220,18 +216,14 @@ async def test_simulate_htlc_lock(
     assert out["htlc_output_index"] == 0
 
 
-async def test_payment_uri_encode(
-    client: AsyncClient, mock_walletd: respx.MockRouter
-) -> None:
+async def test_payment_uri_encode(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
     expected = f"exfer:{ADDR}?amount=100000000"
     mock_walletd.post("/").mock(return_value=rpc_ok({"uri": expected}))
     out = await client.payment_uri_encode(address=ADDR, amount=100_000_000)
     assert out == expected
 
 
-async def test_payment_uri_decode(
-    client: AsyncClient, mock_walletd: respx.MockRouter
-) -> None:
+async def test_payment_uri_decode(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(return_value=rpc_ok({"address": ADDR, "amount": 100_000_000}))
     out = await client.payment_uri_decode(f"exfer:{ADDR}?amount=100000000")
     assert out["address"] == ADDR
@@ -256,9 +248,7 @@ async def test_htlc_forget(client: AsyncClient, mock_walletd: respx.MockRouter) 
     assert await client.htlc_forget(LOCK_TX_ID) is True
 
 
-async def test_get_follower_status(
-    client: AsyncClient, mock_walletd: respx.MockRouter
-) -> None:
+async def test_get_follower_status(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
@@ -299,9 +289,7 @@ async def test_wait_for_tx_timeout_error(
         await client.wait_for_tx(TX_ID, timeout_secs=10)
 
 
-async def test_list_settlements(
-    client: AsyncClient, mock_walletd: respx.MockRouter
-) -> None:
+async def test_list_settlements(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
@@ -356,9 +344,7 @@ async def test_contract_stats(client: AsyncClient, mock_walletd: respx.MockRoute
     assert out[0]["total"] == 3
 
 
-async def test_get_address_history(
-    client: AsyncClient, mock_walletd: respx.MockRouter
-) -> None:
+async def test_get_address_history(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
@@ -378,9 +364,7 @@ async def test_get_address_history(
     assert out["history"][0]["direction"] == "output"
 
 
-async def test_htlc_lookup_by_hashlock(
-    client: AsyncClient, mock_walletd: respx.MockRouter
-) -> None:
+async def test_htlc_lookup_by_hashlock(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok({"htlcs": [_htlc_record_fixture(), _htlc_record_fixture()]})
     )

@@ -56,9 +56,7 @@ def _htlc_record_fixture() -> dict[str, object]:
 # ---------------------------------------------------------------------------
 
 
-def test_htlc_lock_sends_full_param_block(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
+def test_htlc_lock_sends_full_param_block(client: Client, mock_walletd: respx.MockRouter) -> None:
     route = mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
@@ -161,9 +159,7 @@ def test_htlc_reclaim_returns_receipt(client: Client, mock_walletd: respx.MockRo
 # ---------------------------------------------------------------------------
 
 
-def test_simulate_transfer_round_trips(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
+def test_simulate_transfer_round_trips(client: Client, mock_walletd: respx.MockRouter) -> None:
     route = mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
@@ -190,9 +186,7 @@ def test_simulate_transfer_round_trips(
     assert body["params"]["outputs"] == [{"to": ADDR2, "amount": 50_000}]
 
 
-def test_simulate_htlc_lock_round_trips(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
+def test_simulate_htlc_lock_round_trips(client: Client, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
@@ -226,9 +220,7 @@ def test_simulate_htlc_lock_round_trips(
 # ---------------------------------------------------------------------------
 
 
-def test_payment_uri_encode_returns_string(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
+def test_payment_uri_encode_returns_string(client: Client, mock_walletd: respx.MockRouter) -> None:
     expected_uri = f"exfer:{ADDR}?amount=100000000&memo=invoice%2099"
     route = mock_walletd.post("/").mock(return_value=rpc_ok({"uri": expected_uri}))
     uri = client.payment_uri_encode(address=ADDR, amount=100_000_000, memo="invoice 99")
@@ -238,9 +230,7 @@ def test_payment_uri_encode_returns_string(
     assert body["params"] == {"address": ADDR, "amount": 100_000_000, "memo": "invoice 99"}
 
 
-def test_payment_uri_decode_returns_struct(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
+def test_payment_uri_decode_returns_struct(client: Client, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok({"address": ADDR, "amount": 100_000_000, "memo": "invoice 99"})
     )
@@ -261,12 +251,8 @@ def test_htlc_status_returns_record(client: Client, mock_walletd: respx.MockRout
     assert out["params"]["hash_lock"] == HASH_LOCK
 
 
-def test_htlc_list_omits_unset_filters(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
-    route = mock_walletd.post("/").mock(
-        return_value=rpc_ok({"htlcs": [_htlc_record_fixture()]})
-    )
+def test_htlc_list_omits_unset_filters(client: Client, mock_walletd: respx.MockRouter) -> None:
+    route = mock_walletd.post("/").mock(return_value=rpc_ok({"htlcs": [_htlc_record_fixture()]}))
     out = client.htlc_list(role="receiver", state=["locked", "claimed"])
     assert len(out["htlcs"]) == 1
     body = json.loads(route.calls.last.request.content)
@@ -274,9 +260,7 @@ def test_htlc_list_omits_unset_filters(
     assert body["params"] == {"role": "receiver", "state": ["locked", "claimed"]}
 
 
-def test_htlc_list_propagates_next_cursor(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
+def test_htlc_list_propagates_next_cursor(client: Client, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok({"htlcs": [_htlc_record_fixture()], "next_cursor": "abc"})
     )
@@ -284,9 +268,7 @@ def test_htlc_list_propagates_next_cursor(
     assert out["next_cursor"] == "abc"
 
 
-def test_htlc_forget_unwraps_removed(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
+def test_htlc_forget_unwraps_removed(client: Client, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(return_value=rpc_ok({"removed": True}))
     assert client.htlc_forget(LOCK_TX_ID) is True
 
@@ -310,9 +292,7 @@ def test_get_follower_status(client: Client, mock_walletd: respx.MockRouter) -> 
     assert out["full_scan_complete"] is False
 
 
-def test_wait_for_tx_returns_confirmations(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
+def test_wait_for_tx_returns_confirmations(client: Client, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
@@ -327,9 +307,7 @@ def test_wait_for_tx_returns_confirmations(
     assert out["confirmations"] == 1
 
 
-def test_wait_for_tx_raises_on_timeout(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
+def test_wait_for_tx_raises_on_timeout(client: Client, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(return_value=rpc_err(-32040, "wait_for_tx: timed out"))
     with pytest.raises(WaitTimeoutError):
         client.wait_for_tx(TX_ID, timeout_secs=10)
@@ -340,9 +318,7 @@ def test_wait_for_tx_raises_on_timeout(
 # ---------------------------------------------------------------------------
 
 
-def test_list_settlements_returns_records(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
+def test_list_settlements_returns_records(client: Client, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
@@ -378,9 +354,7 @@ def test_indexer_method_surfaces_typed_error_when_unconfigured(
     assert exc_info.value.code == -32041
 
 
-def test_contract_stats_unwraps_list(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
+def test_contract_stats_unwraps_list(client: Client, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
@@ -402,9 +376,7 @@ def test_contract_stats_unwraps_list(
     assert out[0]["succeeded"] == 2
 
 
-def test_get_address_history_returns_rows(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
+def test_get_address_history_returns_rows(client: Client, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
@@ -434,9 +406,7 @@ def test_htlc_lookup_by_hashlock_unwraps_list(
     assert len(out) == 2
 
 
-def test_get_output_spent_by_spent_branch(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
+def test_get_output_spent_by_spent_branch(client: Client, mock_walletd: respx.MockRouter) -> None:
     mock_walletd.post("/").mock(
         return_value=rpc_ok(
             {
@@ -453,11 +423,7 @@ def test_get_output_spent_by_spent_branch(
     assert out["source"] == "node"
 
 
-def test_get_output_spent_by_unspent_branch(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
-    mock_walletd.post("/").mock(
-        return_value=rpc_ok({"spent": False, "source": "node"})
-    )
+def test_get_output_spent_by_unspent_branch(client: Client, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"spent": False, "source": "node"}))
     out = client.get_output_spent_by(LOCK_TX_ID, 0)
     assert out["spent"] is False
