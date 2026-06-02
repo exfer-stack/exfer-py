@@ -28,6 +28,12 @@ from ._transport import (
 from ._version import __version__
 from .types import (
     AddressHistoryResult,
+    AttestationEdgesResult,
+    DetectSwapsResult,
+    NameScriptResult,
+    ResolveNameResult,
+    SignMessageResult,
+    VerifyMessageResult,
     Block,
     ContractStatsRow,
     FollowerStatus,
@@ -47,6 +53,7 @@ from .types import (
     Transaction,
     TransferResult,
     UtxosResult,
+    WaitForPaymentResult,
     WaitForTxResult,
 )
 
@@ -565,6 +572,31 @@ class Client:
         }
         return cast(WaitForTxResult, self._call("wait_for_tx", params))
 
+    def wait_for_payment(
+        self,
+        address: str,
+        *,
+        min_amount: int = 1,
+        timeout_secs: int = 60,
+    ) -> WaitForPaymentResult:
+        """Block until a new credit of at least ``min_amount`` reaches ``address``.
+
+        Returns as soon as the payment is *seen* in the node's mempool (0
+        confirmations) — sub-second when the node's SSE push is connected.
+        This is a receipt/liveness signal, not settlement finality; pair
+        with :meth:`wait_for_tx` for a confirmation depth.
+
+        ``timeout_secs`` is clamped server-side at 600. A quiet window is
+        not an error: on timeout the result has ``received`` False and
+        ``timed_out`` True, so you can simply call again.
+        """
+        params = {
+            "address": address,
+            "min_amount": min_amount,
+            "timeout_secs": timeout_secs,
+        }
+        return cast(WaitForPaymentResult, self._call("wait_for_payment", params))
+
     # ------------------------------------------------------------------
     # Indexer-delegated (walletd v1.9.1 — multi-tenant queries)
     # ------------------------------------------------------------------
@@ -617,6 +649,88 @@ class Client:
         """Activity timeline for ``address`` — every input + output it appears in."""
         params = _addr_paginated_params(address, None, since_height, limit, cursor)
         return cast(AddressHistoryResult, self._call("get_address_history", params))
+
+    def sign_message(self, address: str, message: str) -> SignMessageResult:
+        """Sign an arbitrary UTF-8 message with ``address``'s key
+        (domain-separated under EXFER-MSG). Proof of key control for
+        off-chain challenge-response / agent identity."""
+        return cast(
+            SignMessageResult,
+            self._call("sign_message", {"address": address, "message": message}),
+        )
+
+    def verify_message(
+        self,
+        pubkey: str,
+        signature: str,
+        message: str,
+        *,
+        address: str | None = None,
+    ) -> VerifyMessageResult:
+        """Verify a message signature (pure crypto). If ``address`` is
+        given, valid is true only if it also matches H(pubkey)."""
+        params: dict[str, Any] = {"pubkey": pubkey, "signature": signature, "message": message}
+        if address is not None:
+            params["address"] = address
+        return cast(VerifyMessageResult, self._call("verify_message", params))
+
+    def name_script(self, name: str) -> NameScriptResult:
+        """Derive the burn-script a name maps to (pure, no upstream call)."""
+        return cast(NameScriptResult, self._call("name_script", {"name": name}))
+
+    def resolve_name(self, name: str) -> ResolveNameResult:
+        """Resolve a name to the address it points to (highest-cumulative-burn
+        owner's declared target, else the owner). Requires an indexer-backed
+        walletd."""
+        return cast(ResolveNameResult, self._call("resolve_name", {"name": name}))
+
+    def name_claim(
+        self,
+        name: str,
+        *,
+        from_: str,
+        amount: int = 1000,
+        target: str | None = None,
+        fee: int | None = None,
+    ) -> dict[str, Any]:
+        """Claim (or out-bid for) a name by burning ``amount`` to its script.
+        Ownership is the highest cumulative burn. ``target`` declares where
+        the name points (default: ``from_``)."""
+        params: dict[str, Any] = {"name": name, "from": from_, "amount": amount}
+        if target is not None:
+            params["target"] = target
+        if fee is not None:
+            params["fee"] = fee
+        return cast("dict[str, Any]", self._call("name_claim", params))
+
+    def get_attestation_edges(
+        self,
+        address: str,
+        *,
+        contract_hash: str | None = None,
+    ) -> AttestationEdgesResult:
+        """Per-counterparty reputation edges for ``address`` (contracts run,
+        succeeded, refunded) — the on-chain trust signal to check before
+        transacting with a counterparty. Requires an indexer-backed walletd."""
+        params: dict[str, Any] = {"address": address}
+        if contract_hash is not None:
+            params["contract_hash"] = contract_hash
+        return cast(AttestationEdgesResult, self._call("get_attestation_edges", params))
+
+    def detect_in_chain_swaps(
+        self,
+        *,
+        hash_lock: str | None = None,
+        limit: int | None = None,
+    ) -> DetectSwapsResult:
+        """Groups of HTLCs sharing a hash_lock — atomic-swap fingerprint.
+        Requires an indexer-backed walletd."""
+        params: dict[str, Any] = {}
+        if hash_lock is not None:
+            params["hash_lock"] = hash_lock
+        if limit is not None:
+            params["limit"] = limit
+        return cast(DetectSwapsResult, self._call("detect_in_chain_swaps", params))
 
     def htlc_lookup_by_hashlock(self, hash_lock: str) -> list[HtlcRecord]:
         """Every tracked HTLC committed to ``hash_lock`` — canonical

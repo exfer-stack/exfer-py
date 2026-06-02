@@ -34,6 +34,12 @@ from ._transport import (
 from ._version import __version__
 from .types import (
     AddressHistoryResult,
+    AttestationEdgesResult,
+    DetectSwapsResult,
+    NameScriptResult,
+    ResolveNameResult,
+    SignMessageResult,
+    VerifyMessageResult,
     Block,
     ContractStatsRow,
     FollowerStatus,
@@ -53,6 +59,7 @@ from .types import (
     Transaction,
     TransferResult,
     UtxosResult,
+    WaitForPaymentResult,
     WaitForTxResult,
 )
 
@@ -440,6 +447,30 @@ class AsyncClient:
         }
         return cast(WaitForTxResult, await self._call("wait_for_tx", params))
 
+    async def wait_for_payment(
+        self,
+        address: str,
+        *,
+        min_amount: int = 1,
+        timeout_secs: int = 60,
+    ) -> WaitForPaymentResult:
+        """Block until a new credit of at least ``min_amount`` reaches ``address``.
+
+        Returns as soon as the payment is *seen* in the node's mempool (0
+        confirmations) — sub-second when the node's SSE push is connected.
+        A receipt/liveness signal, not settlement finality; pair with
+        :meth:`wait_for_tx` for a confirmation depth. On timeout the result
+        has ``received`` False and ``timed_out`` True.
+        """
+        params = {
+            "address": address,
+            "min_amount": min_amount,
+            "timeout_secs": timeout_secs,
+        }
+        return cast(
+            WaitForPaymentResult, await self._call("wait_for_payment", params)
+        )
+
     # ------------------------------------------------------------------
     # Indexer-delegated
     # ------------------------------------------------------------------
@@ -480,6 +511,89 @@ class AsyncClient:
     ) -> AddressHistoryResult:
         params = _addr_paginated_params(address, None, since_height, limit, cursor)
         return cast(AddressHistoryResult, await self._call("get_address_history", params))
+
+    async def sign_message(self, address: str, message: str) -> SignMessageResult:
+        """Sign an arbitrary UTF-8 message with ``address``'s key
+        (domain-separated under EXFER-MSG). Proof of key control for
+        off-chain challenge-response / agent identity."""
+        return cast(
+            SignMessageResult,
+            await self._call("sign_message", {"address": address, "message": message}),
+        )
+
+    async def verify_message(
+        self,
+        pubkey: str,
+        signature: str,
+        message: str,
+        *,
+        address: str | None = None,
+    ) -> VerifyMessageResult:
+        """Verify a message signature (pure crypto). If ``address`` is
+        given, valid is true only if it also matches H(pubkey)."""
+        params: dict[str, Any] = {"pubkey": pubkey, "signature": signature, "message": message}
+        if address is not None:
+            params["address"] = address
+        return cast(VerifyMessageResult, await self._call("verify_message", params))
+
+    async def name_script(self, name: str) -> NameScriptResult:
+        """Derive the burn-script a name maps to (pure, no upstream call)."""
+        return cast(NameScriptResult, await self._call("name_script", {"name": name}))
+
+    async def resolve_name(self, name: str) -> ResolveNameResult:
+        """Resolve a name to the address it points to (highest-cumulative-burn
+        owner's declared target, else the owner). Requires an indexer-backed
+        walletd."""
+        return cast(ResolveNameResult, await self._call("resolve_name", {"name": name}))
+
+    async def name_claim(
+        self,
+        name: str,
+        *,
+        from_: str,
+        amount: int = 1000,
+        target: str | None = None,
+        fee: int | None = None,
+    ) -> dict[str, Any]:
+        """Claim (or out-bid for) a name by burning ``amount`` to its script.
+        Ownership is the highest cumulative burn. ``target`` declares where
+        the name points (default: ``from_``)."""
+        params: dict[str, Any] = {"name": name, "from": from_, "amount": amount}
+        if target is not None:
+            params["target"] = target
+        if fee is not None:
+            params["fee"] = fee
+        return cast("dict[str, Any]", await self._call("name_claim", params))
+
+    async def get_attestation_edges(
+        self,
+        address: str,
+        *,
+        contract_hash: str | None = None,
+    ) -> AttestationEdgesResult:
+        """Per-counterparty reputation edges for ``address`` — how many
+        contracts ran with each counterparty and how they resolved
+        (succeeded / refunded). The on-chain trust signal an agent can
+        check before transacting. Requires an indexer-backed walletd."""
+        params: dict[str, Any] = {"address": address}
+        if contract_hash is not None:
+            params["contract_hash"] = contract_hash
+        return cast(AttestationEdgesResult, await self._call("get_attestation_edges", params))
+
+    async def detect_in_chain_swaps(
+        self,
+        *,
+        hash_lock: str | None = None,
+        limit: int | None = None,
+    ) -> DetectSwapsResult:
+        """Groups of HTLCs sharing a hash_lock — the on-chain fingerprint
+        of atomic swaps. Requires an indexer-backed walletd."""
+        params: dict[str, Any] = {}
+        if hash_lock is not None:
+            params["hash_lock"] = hash_lock
+        if limit is not None:
+            params["limit"] = limit
+        return cast(DetectSwapsResult, await self._call("detect_in_chain_swaps", params))
 
     async def htlc_lookup_by_hashlock(self, hash_lock: str) -> list[HtlcRecord]:
         result = await self._call("htlc_lookup_by_hashlock", {"hash_lock": hash_lock})

@@ -25,8 +25,14 @@ from typing import Literal, NamedTuple, TypedDict
 __all__ = [
     "AddressHistoryResult",
     "AddressHistoryRow",
+    "AttestationEdge",
+    "AttestationEdgesResult",
     "Block",
     "ContractStatsRow",
+    "DetectSwapsResult",
+    "NameScriptResult",
+    "ResolveNameResult",
+    "SwapGroup",
     "FollowerStatus",
     "HtlcClaimRecord",
     "HtlcClaimResult",
@@ -43,12 +49,15 @@ __all__ = [
     "SettlementRecord",
     "SimulateHtlcLockResult",
     "SimulateTransferResult",
+    "SignMessageResult",
     "SpentByResult",
+    "VerifyMessageResult",
     "Tip",
     "Transaction",
     "TransferResult",
     "Utxo",
     "UtxosResult",
+    "WaitForPaymentResult",
     "WaitForTxResult",
 ]
 
@@ -259,6 +268,79 @@ class WaitForTxResult(TypedDict):
     block_id: str
     block_height: int
     confirmations: int
+
+
+class NameScriptResult(TypedDict):
+    name: str
+    script: str  # the derived 32-byte burn-script (hex64)
+
+
+class ResolveNameResult(TypedDict, total=False):
+    # Highest-cumulative-burn name registry. `address` is where the name
+    # currently points (winner's declared target, else the winner). `owner`
+    # is the winning (highest burn) claimant. All null/0 when unclaimed.
+    name: str
+    script: str
+    address: str | None
+    owner: str | None
+    total_burned: int
+    claim_tx_id: str | None
+    claim_height: int | None
+
+
+class SignMessageResult(TypedDict):
+    signature: str  # hex128
+    pubkey: str  # hex64
+    address: str  # hex64
+
+
+class VerifyMessageResult(TypedDict):
+    valid: bool
+    address: str  # address derived from pubkey (returned even on valid=false)
+
+
+class AttestationEdge(TypedDict, total=False):
+    # One counterparty reputation edge for an address: how many contracts
+    # ran between them and how they resolved. `contract_name` is present
+    # only for recognised contract templates.
+    counterparty: str
+    contract_hash: str
+    contract_name: str | None
+    total: int
+    succeeded: int
+    refunded: int
+    last_seen_height: int | None
+
+
+class AttestationEdgesResult(TypedDict):
+    edges: list[AttestationEdge]
+
+
+class SwapGroup(TypedDict):
+    # A set of HTLCs sharing one hash_lock — the on-chain fingerprint of
+    # an atomic swap.
+    hash_lock: str
+    htlcs: list["HtlcRecord"]
+
+
+class DetectSwapsResult(TypedDict):
+    swaps: list[SwapGroup]
+
+
+class WaitForPaymentResult(TypedDict, total=False):
+    # On a credit: ``received`` is True with ``tx_id`` / ``amount`` /
+    # ``confirmations`` / ``tip_height``. On timeout: ``received`` is
+    # False with ``timed_out`` True and ``waited_secs``. ``tx_id`` is
+    # null when the credit was detected via a confirmed-balance delta
+    # rather than a specific mempool tx.
+    address: str
+    received: bool
+    timed_out: bool
+    tx_id: str | None
+    amount: int
+    confirmations: int
+    tip_height: int
+    waited_secs: int
 
 
 class PaymentUri(TypedDict, total=False):
