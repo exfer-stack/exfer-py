@@ -184,6 +184,98 @@ async def test_send_raw_transaction_returns_str(
 
 
 # ---------------------------------------------------------------------------
+# EXFER-QUOTE (quote_issue / quote_verify)
+# ---------------------------------------------------------------------------
+
+PAYEE_PUBKEY = "de" * 32
+SIGNER_PUBKEY = "ab" * 32
+SIGNATURE = "ff" * 64
+GENESIS = "00" * 32
+QUOTE_ID = "abababababababababababababababab"
+
+QUOTE_JSON = {
+    "version": 1,
+    "quote_id": QUOTE_ID,
+    "currency": "USD",
+    "amount_minor": 1250,
+    "rate_exfers_per_unit": 4000000000,
+    "exfer_amount": 50000000000,
+    "payee_pubkey": PAYEE_PUBKEY,
+    "issued_at": 1781000000,
+    "expires_at": 1781000300,
+    "memo": "roundtrip",
+    "signer_pubkey": SIGNER_PUBKEY,
+    "signature": SIGNATURE,
+}
+
+
+def _quote_issue_result() -> dict[str, Any]:
+    return {
+        "quote": QUOTE_JSON,
+        "signature": SIGNATURE,
+        "signer_address": ADDR,
+        "payee_address": "ee" * 32,
+        "genesis_block_id": GENESIS,
+        "image": "deadbeef",
+        "htlc_preimage": "11" * 32,
+        "htlc_hash_lock": "22" * 32,
+    }
+
+
+async def test_quote_issue_wire_request_and_unpack(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
+    route = mock_walletd.post("/").mock(return_value=rpc_ok(_quote_issue_result()))
+    out = await client.quote_issue(
+        address=ADDR,
+        payee_pubkey=PAYEE_PUBKEY,
+        currency="USD",
+        amount_minor=1250,
+        rate_exfers_per_unit=4000000000,
+        exfer_amount=50000000000,
+        ttl_secs=300,
+        memo="note",
+        quote_id=QUOTE_ID,
+    )
+    body = json.loads(route.calls.last.request.content)
+    assert body["method"] == "quote_issue"
+    assert body["params"] == {
+        "address": ADDR,
+        "payee_pubkey": PAYEE_PUBKEY,
+        "currency": "USD",
+        "amount_minor": 1250,
+        "rate_exfers_per_unit": 4000000000,
+        "exfer_amount": 50000000000,
+        "ttl_secs": 300,
+        "memo": "note",
+        "quote_id": QUOTE_ID,
+    }
+    assert out["signer_address"] == ADDR
+    assert out["htlc_hash_lock"] == "22" * 32
+
+
+async def test_quote_verify_wire_request_and_unpack(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "valid": True,
+                "signer_address": ADDR,
+                "payee_address": "ee" * 32,
+                "genesis_block_id": GENESIS,
+            }
+        )
+    )
+    out = await client.quote_verify(QUOTE_JSON)
+    body = json.loads(route.calls.last.request.content)
+    assert body["method"] == "quote_verify"
+    assert body["params"] == {"quote": QUOTE_JSON}
+    assert out["valid"] is True
+    assert out["genesis_block_id"] == GENESIS
+
+
+# ---------------------------------------------------------------------------
 # Errors propagate
 # ---------------------------------------------------------------------------
 

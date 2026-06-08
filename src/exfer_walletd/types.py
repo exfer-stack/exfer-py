@@ -43,6 +43,9 @@ __all__ = [
     "HtlcState",
     "ListSettlementsResult",
     "PaymentUri",
+    "QuoteIssueResult",
+    "QuoteJson",
+    "QuoteVerifyResult",
     "SettlementRecord",
     "SignMessageResult",
     "SimulateHtlcLockResult",
@@ -277,6 +280,51 @@ class SignMessageResult(TypedDict):
 class VerifyMessageResult(TypedDict):
     valid: bool
     address: str  # address derived from pubkey (returned even on valid=false)
+
+
+# ---------------------------------------------------------------------------
+# EXFER-QUOTE — signed price credential (walletd Wave 2 / quote.rs)
+# ---------------------------------------------------------------------------
+
+
+class QuoteJson(TypedDict, total=False):
+    # The canonical signed quote object (snake_case, lowercase hex). This is
+    # both the ``quote_issue`` result body (``QuoteIssueResult.quote``) and
+    # the ``quote_verify`` input. ``payer_pubkey`` is present only when the
+    # quote was issued with a payer binding (non-transferable); all other
+    # fields are always present.
+    version: int
+    quote_id: str  # 16 bytes / 32 hex
+    currency: str  # 3-12 chars [A-Z0-9]
+    amount_minor: int
+    rate_exfers_per_unit: int
+    exfer_amount: int  # the only binding amount, exfers
+    payee_pubkey: str  # hex64
+    payer_pubkey: str  # hex64; omitted when no payer binding
+    issued_at: int
+    expires_at: int
+    memo: str  # UTF-8, <= 256 bytes
+    signer_pubkey: str  # hex64
+    signature: str  # hex128
+
+
+class QuoteIssueResult(TypedDict):
+    quote: QuoteJson  # the full signed quote credential to hand out
+    signature: str  # hex128, also echoed in ``quote["signature"]``
+    signer_address: str  # hex64, H(EXFER-ADDR, signer_pubkey)
+    payee_address: str  # hex64, H(EXFER-ADDR, payee_pubkey)
+    genesis_block_id: str  # hex64, live node genesis bound into the image
+    image: str  # hex of the exact signed bytes, for audit
+    htlc_preimage: str  # hex64, 32 random bytes — KEEP SECRET
+    htlc_hash_lock: str  # hex64, SHA-256(htlc_preimage)
+
+
+class QuoteVerifyResult(TypedDict, total=False):
+    valid: bool
+    reason: str  # why valid is false; omitted when valid
+    signer_address: str  # hex64, derived from signer_pubkey (always present)
+    payee_address: str  # hex64, derived from payee_pubkey (always present)
+    genesis_block_id: str  # hex64, the live genesis checked against
 
 
 class AttestationEdge(TypedDict, total=False):
