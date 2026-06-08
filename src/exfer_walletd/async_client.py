@@ -48,6 +48,9 @@ from .types import (
     HtlcState,
     ListSettlementsResult,
     PaymentUri,
+    QuoteIssueResult,
+    QuoteJson,
+    QuoteVerifyResult,
     SignMessageResult,
     SimulateHtlcLockResult,
     SimulateTransferResult,
@@ -250,6 +253,16 @@ class AsyncClient:
     async def get_transaction(self, tx_id: str) -> Transaction:
         return cast(Transaction, await self._call("get_transaction", {"hash": tx_id}))
 
+    async def quote_verify(self, quote: QuoteJson) -> QuoteVerifyResult:
+        """Accept-check a signed EXFER-QUOTE (Read scope — pure, key-free).
+
+        ``quote`` is a signed quote object (the ``quote`` field of a
+        :meth:`quote_issue` result). Returns ``valid`` plus the derived
+        ``signer_address`` / ``payee_address`` and the ``genesis_block_id``
+        checked against; ``reason`` is set when ``valid`` is false.
+        """
+        return cast(QuoteVerifyResult, await self._call("quote_verify", {"quote": quote}))
+
     # ------------------------------------------------------------------
     # Spend scope
     # ------------------------------------------------------------------
@@ -353,6 +366,43 @@ class AsyncClient:
         if fee is not None:
             params["fee"] = fee
         return cast(HtlcReclaimResult, await self._call("htlc_reclaim", params))
+
+    async def quote_issue(
+        self,
+        *,
+        address: str,
+        payee_pubkey: str,
+        currency: str,
+        amount_minor: int,
+        rate_exfers_per_unit: int,
+        exfer_amount: int,
+        ttl_secs: int,
+        payer_pubkey: str | None = None,
+        memo: str | None = None,
+        quote_id: str | None = None,
+    ) -> QuoteIssueResult:
+        """Construct and sign an EXFER-QUOTE (Spend scope — mints a credential).
+
+        See :meth:`exfer_walletd.Client.quote_issue` for the full field
+        contract. Returns the signed ``quote`` plus a payee-side
+        ``htlc_preimage`` (KEEP SECRET) and its ``htlc_hash_lock``.
+        """
+        params: dict[str, Any] = {
+            "address": address,
+            "payee_pubkey": payee_pubkey,
+            "currency": currency,
+            "amount_minor": amount_minor,
+            "rate_exfers_per_unit": rate_exfers_per_unit,
+            "exfer_amount": exfer_amount,
+            "ttl_secs": ttl_secs,
+        }
+        if payer_pubkey is not None:
+            params["payer_pubkey"] = payer_pubkey
+        if memo is not None:
+            params["memo"] = memo
+        if quote_id is not None:
+            params["quote_id"] = quote_id
+        return cast(QuoteIssueResult, await self._call("quote_issue", params))
 
     # ------------------------------------------------------------------
     # Dry-run simulation

@@ -42,6 +42,9 @@ from .types import (
     HtlcState,
     ListSettlementsResult,
     PaymentUri,
+    QuoteIssueResult,
+    QuoteJson,
+    QuoteVerifyResult,
     SignMessageResult,
     SimulateHtlcLockResult,
     SimulateTransferResult,
@@ -299,6 +302,22 @@ class Client:
         """Fetch a transaction by its ``tx_id``. Covers mempool + confirmed."""
         return cast(Transaction, self._call("get_transaction", {"hash": tx_id}))
 
+    def quote_verify(self, quote: QuoteJson) -> QuoteVerifyResult:
+        """Accept-check a signed EXFER-QUOTE (Read scope — pure, key-free).
+
+        ``quote`` is a signed quote object (the ``quote`` field of a
+        :meth:`quote_issue` result). Verification reconstructs the signing
+        image against the live node genesis and clock and checks the
+        signature, key validity, and TTL/skew/expiry windows.
+
+        Returns ``valid`` plus the derived ``signer_address`` /
+        ``payee_address`` (always present, even on failure) and the
+        ``genesis_block_id`` checked against. When ``valid`` is false,
+        ``reason`` explains why. Proves authorship, not authority — the
+        acceptor still decides whether it trusts the signer.
+        """
+        return cast(QuoteVerifyResult, self._call("quote_verify", {"quote": quote}))
+
     # ------------------------------------------------------------------
     # Spend scope
     # ------------------------------------------------------------------
@@ -439,6 +458,54 @@ class Client:
         if fee is not None:
             params["fee"] = fee
         return cast(HtlcReclaimResult, self._call("htlc_reclaim", params))
+
+    def quote_issue(
+        self,
+        *,
+        address: str,
+        payee_pubkey: str,
+        currency: str,
+        amount_minor: int,
+        rate_exfers_per_unit: int,
+        exfer_amount: int,
+        ttl_secs: int,
+        payer_pubkey: str | None = None,
+        memo: str | None = None,
+        quote_id: str | None = None,
+    ) -> QuoteIssueResult:
+        """Construct and sign an EXFER-QUOTE (Spend scope — mints a credential).
+
+        ``address`` is the issuer/signer wallet whose key signs the image.
+        ``payee_pubkey`` (64 hex) is the party to be paid. ``currency`` is a
+        3-12 char ``[A-Z0-9]`` pricing-unit code; ``exfer_amount`` is the
+        only binding amount (exfers). ``ttl_secs`` sets the lifetime
+        (``0 < ttl_secs <= 3600``); ``issued_at`` is now and ``expires_at``
+        is ``now + ttl_secs``.
+
+        Optional ``payer_pubkey`` (64 hex) binds the quote to a payer
+        (non-transferable). ``memo`` is a signed UTF-8 note (<= 256 bytes).
+        ``quote_id`` (32 hex) pins the id; omitted means walletd generates
+        16 random bytes.
+
+        Returns the signed ``quote`` object plus a payee-side HTLC
+        ``htlc_preimage`` (KEEP SECRET) and its ``htlc_hash_lock``.
+        """
+        params: dict[str, Any] = {
+            "address": address,
+            "payee_pubkey": payee_pubkey,
+            "currency": currency,
+            "amount_minor": amount_minor,
+            "rate_exfers_per_unit": rate_exfers_per_unit,
+            "exfer_amount": exfer_amount,
+            "ttl_secs": ttl_secs,
+        }
+        if payer_pubkey is not None:
+            params["payer_pubkey"] = payer_pubkey
+        if memo is not None:
+            params["memo"] = memo
+        if quote_id is not None:
+            params["quote_id"] = quote_id
+        return cast(QuoteIssueResult, self._call("quote_issue", params))
 
     # ------------------------------------------------------------------
     # Dry-run simulation (Read scope — never broadcasts)

@@ -243,6 +243,184 @@ def test_send_raw_transaction_returns_tx_id(client: Client, mock_walletd: respx.
 
 
 # ---------------------------------------------------------------------------
+# EXFER-QUOTE (quote_issue / quote_verify)
+# ---------------------------------------------------------------------------
+
+PAYEE_PUBKEY = "de" * 32
+PAYER_PUBKEY = "cd" * 32
+SIGNER_PUBKEY = "ab" * 32
+SIGNATURE = "ff" * 64
+GENESIS = "00" * 32
+QUOTE_ID = "abababababababababababababababab"
+
+QUOTE_JSON = {
+    "version": 1,
+    "quote_id": QUOTE_ID,
+    "currency": "USD",
+    "amount_minor": 1250,
+    "rate_exfers_per_unit": 4000000000,
+    "exfer_amount": 50000000000,
+    "payee_pubkey": PAYEE_PUBKEY,
+    "issued_at": 1781000000,
+    "expires_at": 1781000300,
+    "memo": "roundtrip",
+    "signer_pubkey": SIGNER_PUBKEY,
+    "signature": SIGNATURE,
+}
+
+
+def test_quote_issue_wire_request_and_unpack(
+    client: Client, mock_walletd: respx.MockRouter
+) -> None:
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "quote": QUOTE_JSON,
+                "signature": SIGNATURE,
+                "signer_address": ADDR,
+                "payee_address": "ee" * 32,
+                "genesis_block_id": GENESIS,
+                "image": "deadbeef",
+                "htlc_preimage": "11" * 32,
+                "htlc_hash_lock": "22" * 32,
+            }
+        )
+    )
+    out = client.quote_issue(
+        address=ADDR,
+        payee_pubkey=PAYEE_PUBKEY,
+        currency="USD",
+        amount_minor=1250,
+        rate_exfers_per_unit=4000000000,
+        exfer_amount=50000000000,
+        ttl_secs=300,
+    )
+    body = json.loads(route.calls.last.request.content)
+    assert body["method"] == "quote_issue"
+    assert body["params"] == {
+        "address": ADDR,
+        "payee_pubkey": PAYEE_PUBKEY,
+        "currency": "USD",
+        "amount_minor": 1250,
+        "rate_exfers_per_unit": 4000000000,
+        "exfer_amount": 50000000000,
+        "ttl_secs": 300,
+    }
+    assert out["signature"] == SIGNATURE
+    assert out["signer_address"] == ADDR
+    assert out["quote"]["quote_id"] == QUOTE_ID
+    assert out["htlc_preimage"] == "11" * 32
+    assert out["htlc_hash_lock"] == "22" * 32
+
+
+def test_quote_issue_optional_params_passed_through(
+    client: Client, mock_walletd: respx.MockRouter
+) -> None:
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "quote": QUOTE_JSON,
+                "signature": SIGNATURE,
+                "signer_address": ADDR,
+                "payee_address": "ee" * 32,
+                "genesis_block_id": GENESIS,
+                "image": "deadbeef",
+                "htlc_preimage": "11" * 32,
+                "htlc_hash_lock": "22" * 32,
+            }
+        )
+    )
+    client.quote_issue(
+        address=ADDR,
+        payee_pubkey=PAYEE_PUBKEY,
+        currency="USD",
+        amount_minor=1,
+        rate_exfers_per_unit=1,
+        exfer_amount=1,
+        ttl_secs=60,
+        payer_pubkey=PAYER_PUBKEY,
+        memo="note",
+        quote_id=QUOTE_ID,
+    )
+    params = json.loads(route.calls.last.request.content)["params"]
+    assert params["payer_pubkey"] == PAYER_PUBKEY
+    assert params["memo"] == "note"
+    assert params["quote_id"] == QUOTE_ID
+
+
+def test_quote_issue_omits_unset_optionals(client: Client, mock_walletd: respx.MockRouter) -> None:
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "quote": QUOTE_JSON,
+                "signature": SIGNATURE,
+                "signer_address": ADDR,
+                "payee_address": "ee" * 32,
+                "genesis_block_id": GENESIS,
+                "image": "deadbeef",
+                "htlc_preimage": "11" * 32,
+                "htlc_hash_lock": "22" * 32,
+            }
+        )
+    )
+    client.quote_issue(
+        address=ADDR,
+        payee_pubkey=PAYEE_PUBKEY,
+        currency="USD",
+        amount_minor=1,
+        rate_exfers_per_unit=1,
+        exfer_amount=1,
+        ttl_secs=60,
+    )
+    params = json.loads(route.calls.last.request.content)["params"]
+    assert "payer_pubkey" not in params
+    assert "memo" not in params
+    assert "quote_id" not in params
+
+
+def test_quote_verify_wire_request_and_unpack(
+    client: Client, mock_walletd: respx.MockRouter
+) -> None:
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "valid": True,
+                "signer_address": ADDR,
+                "payee_address": "ee" * 32,
+                "genesis_block_id": GENESIS,
+            }
+        )
+    )
+    out = client.quote_verify(QUOTE_JSON)
+    body = json.loads(route.calls.last.request.content)
+    assert body["method"] == "quote_verify"
+    assert body["params"] == {"quote": QUOTE_JSON}
+    assert out["valid"] is True
+    assert out["signer_address"] == ADDR
+    assert out["genesis_block_id"] == GENESIS
+    assert "reason" not in out
+
+
+def test_quote_verify_invalid_carries_reason(
+    client: Client, mock_walletd: respx.MockRouter
+) -> None:
+    mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "valid": False,
+                "reason": "quote has expired",
+                "signer_address": ADDR,
+                "payee_address": "ee" * 32,
+                "genesis_block_id": GENESIS,
+            }
+        )
+    )
+    out = client.quote_verify(QUOTE_JSON)
+    assert out["valid"] is False
+    assert out["reason"] == "quote has expired"
+
+
+# ---------------------------------------------------------------------------
 # Alternate constructors
 # ---------------------------------------------------------------------------
 
