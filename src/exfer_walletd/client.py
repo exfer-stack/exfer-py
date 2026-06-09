@@ -689,7 +689,11 @@ class Client:
             "min_confirmations": min_confirmations,
             "timeout_secs": timeout_secs,
         }
-        return cast(WaitForTxResult, self._call("wait_for_tx", params))
+        # +15s margin so the HTTP read timeout outlives walletd's server-side wait.
+        return cast(
+            WaitForTxResult,
+            self._call("wait_for_tx", params, request_timeout=timeout_secs + 15),
+        )
 
     def wait_for_payment(
         self,
@@ -714,7 +718,11 @@ class Client:
             "min_amount": min_amount,
             "timeout_secs": timeout_secs,
         }
-        return cast(WaitForPaymentResult, self._call("wait_for_payment", params))
+        # +15s margin so the HTTP read timeout outlives walletd's server-side wait.
+        return cast(
+            WaitForPaymentResult,
+            self._call("wait_for_payment", params, request_timeout=timeout_secs + 15),
+        )
 
     # ------------------------------------------------------------------
     # Indexer-delegated (walletd v1.9.1 — multi-tenant queries)
@@ -846,14 +854,26 @@ class Client:
     # Internal
     # ------------------------------------------------------------------
 
-    def _call(self, method: str, params: Mapping[str, Any] | None) -> Any:
+    def _call(
+        self,
+        method: str,
+        params: Mapping[str, Any] | None,
+        *,
+        request_timeout: float | None = None,
+    ) -> Any:
         envelope = build_envelope(method, params, self._ids.next())
+        post_kwargs: dict[str, Any] = {
+            "json": envelope,
+            "headers": {"Authorization": f"Bearer {self._token}"},
+        }
+        # Long-poll calls (wait_for_tx / wait_for_payment) block walletd for up
+        # to timeout_secs. The per-request read timeout must cover that, else
+        # httpx aborts at the client default (30s) and the wait surfaces as a
+        # spurious "walletd unreachable". Those methods pass an extended timeout.
+        if request_timeout is not None:
+            post_kwargs["timeout"] = request_timeout
         try:
-            resp = self._http.post(
-                f"{self._url}/",
-                json=envelope,
-                headers={"Authorization": f"Bearer {self._token}"},
-            )
+            resp = self._http.post(f"{self._url}/", **post_kwargs)
         except httpx.HTTPError as exc:
             raise wrap_httpx_error(exc) from exc
         return decode_response(resp)

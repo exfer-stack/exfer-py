@@ -313,6 +313,35 @@ def test_wait_for_tx_raises_on_timeout(client: Client, mock_walletd: respx.MockR
         client.wait_for_tx(TX_ID, timeout_secs=10)
 
 
+def test_wait_for_tx_extends_http_timeout_past_server_wait(client: Client) -> None:
+    # Regression: a long wait_for_tx must raise the per-request HTTP timeout
+    # above timeout_secs, or httpx aborts at the 30s client default and the wait
+    # surfaces as a spurious "walletd unreachable" (observed on a 180s wait).
+    captured: dict[str, object] = {}
+
+    def spy(method: str, params: object, *, request_timeout: float | None = None) -> object:
+        captured["method"] = method
+        captured["request_timeout"] = request_timeout
+        return {"tx_id": TX_ID, "confirmations": 3}
+
+    client._call = spy  # type: ignore[method-assign]
+    client.wait_for_tx(TX_ID, timeout_secs=180)
+    assert captured["method"] == "wait_for_tx"
+    assert captured["request_timeout"] == 195  # 180 + 15s margin
+
+
+def test_wait_for_payment_extends_http_timeout_past_server_wait(client: Client) -> None:
+    captured: dict[str, object] = {}
+
+    def spy(method: str, params: object, *, request_timeout: float | None = None) -> object:
+        captured["request_timeout"] = request_timeout
+        return {"address": "aa" * 32, "received": False, "timed_out": True}
+
+    client._call = spy  # type: ignore[method-assign]
+    client.wait_for_payment("aa" * 32, timeout_secs=300)
+    assert captured["request_timeout"] == 315  # 300 + 15s margin
+
+
 # ---------------------------------------------------------------------------
 # Indexer-delegated
 # ---------------------------------------------------------------------------
