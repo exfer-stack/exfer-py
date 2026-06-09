@@ -363,7 +363,11 @@ class Client:
         blob carried by the payment; meaning is the application's. Read it
         back from ``get_transaction`` (``outputs[].datum``).
         """
-        params: dict[str, Any] = {"from": from_, "to": to, "amount": amount}
+        # walletd's transfer RPC takes a recipients ARRAY (`outputs`), not a
+        # flat to/amount — the same shape simulate_transfer uses. This
+        # convenience signature's single (to, amount) becomes a one-element
+        # outputs list; an optional datum attaches to that (primary) output.
+        params: dict[str, Any] = {"from": from_, "outputs": [{"to": to, "amount": amount}]}
         if fee is not None:
             params["fee"] = fee
         if datum is not None:

@@ -174,7 +174,7 @@ async def test_transfer_wire_field_is_from(
     )
     await client.transfer(from_=ADDR, to="ee" * 32, amount=10)
     body = json.loads(route.calls.last.request.content)
-    assert body["params"] == {"from": ADDR, "to": "ee" * 32, "amount": 10}
+    assert body["params"] == {"from": ADDR, "outputs": [{"to": "ee" * 32, "amount": 10}]}
 
 
 async def test_send_raw_transaction_returns_str(

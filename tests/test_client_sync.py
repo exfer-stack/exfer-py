@@ -215,7 +215,7 @@ def test_transfer_wire_field_is_from_not_from_(
     out = client.transfer(from_=ADDR, to="ee" * 32, amount=30000000)
     assert out["submitted"] is True
     body = json.loads(route.calls.last.request.content)
-    assert body["params"] == {"from": ADDR, "to": "ee" * 32, "amount": 30000000}
+    assert body["params"] == {"from": ADDR, "outputs": [{"to": "ee" * 32, "amount": 30000000}]}
 
 
 def test_transfer_with_fee(client: Client, mock_walletd: respx.MockRouter) -> None:
