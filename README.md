@@ -112,8 +112,25 @@ entirely. Mismatches raise `FingerprintMismatchError`.
 
 Full docs site: **<https://exfer-stack.github.io/exfer-py/>**.
 
+## Capabilities
+
+One typed method per walletd RPC, covering: addresses, balances, blocks,
+and transactions; `transfer` plus dry-run `simulate_transfer` /
+`simulate_htlc_lock`; the HTLC spend trio
+(`htlc_lock` / `htlc_claim` / `htlc_reclaim`) and HTLC observability
+(`htlc_status` / `htlc_list` / `htlc_forget` / `htlc_lookup_by_hashlock`);
+BIP21-style payment URIs (`payment_uri_encode` / `payment_uri_decode`);
+EXFER-QUOTE signed price credentials (`quote_issue` / `quote_verify`);
+message signing (`sign_message` / `verify_message`); indexer-delegated
+queries (`list_settlements`, `contract_stats`, `get_address_history`,
+`get_attestation_edges`, `get_output_spent_by`, `get_output_datum`,
+`find_settlements_by_quote_id`, `detect_in_chain_swaps`); and
+observability (`wait_for_tx`, `wait_for_payment`, `get_follower_status`).
+
 ## Status
 
-`0.6.0` — alpha. Tested against `exfer-walletd >= 0.5.0` (TLS support).
+`0.8.0` — alpha. Tested against `exfer-walletd >= 1.9.1` (HTLC,
+dry-run simulation, payment URIs, quotes, message signing, and
+indexer-delegated queries). TLS pinning supported since `0.6.0`.
 
 MIT licensed.

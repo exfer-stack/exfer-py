@@ -80,8 +80,8 @@ Tests skip cleanly if the binary isn't available.
 
 ## Which walletd versions are supported?
 
-The SDK tracks walletd's current minor release. `v0.3.0` of the SDK is
-tested against walletd `v0.4.3`; the CI integration job pins to that
+The SDK tracks walletd's current minor release. `v0.8.0` of the SDK is
+tested against walletd `v1.9.1`; the CI integration job pins to that
 exact tag. Any newer walletd should work — unknown error codes
 gracefully fall through to bare `WalletdError`.
 
