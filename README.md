@@ -129,7 +129,7 @@ observability (`wait_for_tx`, `wait_for_payment`, `get_follower_status`).
 
 ## Status
 
-`0.8.0` — alpha. Tested against `exfer-walletd >= 1.9.1` (HTLC,
+`0.9.0` — alpha. Tested against `exfer-walletd >= 1.9.1` (HTLC,
 dry-run simulation, payment URIs, quotes, message signing, and
 indexer-delegated queries). TLS pinning supported since `0.6.0`.
 

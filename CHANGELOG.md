@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.9.0 — 2026-06-09
 
 ### Breaking — address methods now return full records
 
@@ -18,6 +18,21 @@
 
 New `TypedDict`s `GenerateAddressResult` and `AddressRecord` in
 `exfer_walletd.types`. Mirrored on both `Client` and `AsyncClient`.
+
+### New methods
+
+- `get_output_datum()` and `find_settlements_by_quote_id()` — the
+  EXFER-QUOTE settlement read surface (indexer-delegated on walletd).
+- `simulate_transfer()` gained an optional `datum` argument, so a
+  settlement dry-run reflects the on-chain size of the datum it carries.
+
+### Fixes
+
+- `transfer()` now sends the `outputs` array walletd expects; the old
+  flat `to`/`amount` shape was rejected by walletd.
+- `wait_for_tx()` / `wait_for_payment()` extend the HTTP read timeout past
+  the server-side wait, so a long confirmation wait no longer surfaces as a
+  spurious "walletd unreachable" transport error.
 
 ## 0.8.0 — walletd v1.9 + v1.9.1 surface
 

@@ -39,8 +39,8 @@ with Client("http://127.0.0.1:7448", token="...") as c:
 
 ## Status
 
-`0.8.0` — alpha. Tested against `exfer-walletd >= 1.9.1`. The 0.8
-surface adds the HTLC spend trio, dry-run simulation, payment URIs,
+`0.9.0` — alpha. Tested against `exfer-walletd >= 1.9.1`. The surface
+covers the HTLC spend trio, dry-run simulation, payment URIs,
 EXFER-QUOTE credentials, message signing, and indexer-delegated
 queries on top of the core address/balance/block/transfer methods. See
 the [CHANGELOG](https://github.com/exfer-stack/exfer-py/blob/main/CHANGELOG.md)
