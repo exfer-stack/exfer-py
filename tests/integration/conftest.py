@@ -87,7 +87,27 @@ def _spawn_walletd(
         )
 
     dead_node_port = _free_port()
-    env = {**os.environ, "WALLETD_DATADIR": str(datadir)}
+    env = {
+        **os.environ,
+        "WALLETD_DATADIR": str(datadir),
+        # walletd v1 encrypts the HD seed at rest (argon2id + ChaCha20-Poly1305)
+        # and refuses to start without a passphrase. Supply a throwaway one for
+        # the ephemeral per-test datadir; honor an externally-set value so a
+        # custom keystore can still be used.
+        "WALLETD_KEYSTORE_PASSPHRASE": os.environ.get(
+            "WALLETD_KEYSTORE_PASSPHRASE", "integration-test-passphrase"
+        ),
+    }
+    # walletd v1 derives addresses from an HD seed; a bare daemon start on an
+    # empty datadir creates a *seedless* keyring, on which `generate_address`
+    # errors. Initialise a seeded keystore first (one-shot; uses the same
+    # datadir + passphrase from env).
+    subprocess.run(
+        [str(binary), "init-seeded"],
+        env=env,
+        check=True,
+        capture_output=True,
+    )
     args = [
         str(binary),
         "--bind",
@@ -135,7 +155,9 @@ def walletd_process(
             f"walletd failed to start.\nstdout:\n{out.decode()}\nstderr:\n{err.decode()}"
         ) from None
 
-    token = (datadir / "token").read_text().strip()
+    # walletd v1 writes three scoped tokens (token-{read,manage,spend}); the
+    # integration tests call generate_address, which is Manage scope.
+    token = (datadir / "token-manage").read_text().strip()
     try:
         yield url, token
     finally:
@@ -175,7 +197,9 @@ def walletd_tls_process(
             f"walletd --tls failed to start.\nstdout:\n{out.decode()}\nstderr:\n{err.decode()}"
         ) from None
 
-    token = (datadir / "token").read_text().strip()
+    # walletd v1 writes three scoped tokens (token-{read,manage,spend}); the
+    # integration tests call generate_address, which is Manage scope.
+    token = (datadir / "token-manage").read_text().strip()
     fingerprint = (datadir / "cert.fingerprint").read_text().strip()
     try:
         yield url, token, fingerprint
