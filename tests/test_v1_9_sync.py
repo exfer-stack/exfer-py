@@ -456,3 +456,122 @@ def test_get_output_spent_by_unspent_branch(client: Client, mock_walletd: respx.
     mock_walletd.post("/").mock(return_value=rpc_ok({"spent": False, "source": "node"}))
     out = client.get_output_spent_by(LOCK_TX_ID, 0)
     assert out["spent"] is False
+
+
+# ---------------------------------------------------------------------------
+# Honor layer — get_output_datum / find_settlements_by_quote_id / sim datum
+# ---------------------------------------------------------------------------
+
+QUOTE_ID = "0123456789abcdef0123456789abcdef"  # 16 bytes / 32 hex
+
+
+def test_get_output_datum_quote_id_hit(client: Client, mock_walletd: respx.MockRouter) -> None:
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok({"quote_id": QUOTE_ID, "unhonorable": False})
+    )
+    out = client.get_output_datum(TX_ID, 2)
+    assert out["quote_id"] == QUOTE_ID
+    assert out["unhonorable"] is False
+    body = json.loads(route.calls.last.request.content)
+    assert body["method"] == "get_output_datum"
+    assert body["params"] == {"tx_id": TX_ID, "output_index": 2}
+
+
+def test_get_output_datum_null_no_datum(client: Client, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"quote_id": None, "unhonorable": False}))
+    out = client.get_output_datum(TX_ID, 0)
+    assert out["quote_id"] is None
+    assert out["unhonorable"] is False
+
+
+def test_get_output_datum_unhonorable(client: Client, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"quote_id": None, "unhonorable": True}))
+    out = client.get_output_datum(TX_ID, 1)
+    assert out["quote_id"] is None
+    assert out["unhonorable"] is True
+
+
+def test_find_settlements_by_quote_id_empty(client: Client, mock_walletd: respx.MockRouter) -> None:
+    route = mock_walletd.post("/").mock(return_value=rpc_ok({"settlements": []}))
+    out = client.find_settlements_by_quote_id(QUOTE_ID)
+    assert out["settlements"] == []
+    body = json.loads(route.calls.last.request.content)
+    assert body["method"] == "find_settlements_by_quote_id"
+    assert body["params"] == {"quote_id": QUOTE_ID}
+
+
+def test_find_settlements_by_quote_id_single(
+    client: Client, mock_walletd: respx.MockRouter
+) -> None:
+    mock_walletd.post("/").mock(
+        return_value=rpc_ok({"settlements": [{"tx_id": TX_ID, "output_index": 2}]})
+    )
+    out = client.find_settlements_by_quote_id(QUOTE_ID)
+    assert out["settlements"] == [{"tx_id": TX_ID, "output_index": 2}]
+
+
+def test_find_settlements_by_quote_id_multi(client: Client, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "settlements": [
+                    {"tx_id": TX_ID, "output_index": 0},
+                    {"tx_id": LOCK_TX_ID, "output_index": 3},
+                ]
+            }
+        )
+    )
+    out = client.find_settlements_by_quote_id(QUOTE_ID)
+    assert len(out["settlements"]) == 2
+    assert out["settlements"][1]["tx_id"] == LOCK_TX_ID
+    assert out["settlements"][1]["output_index"] == 3
+
+
+def test_simulate_transfer_includes_datum(client: Client, mock_walletd: respx.MockRouter) -> None:
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "size": 245,
+                "fee": 1_000,
+                "fee_rate": 4,
+                "inputs": [{"tx_id": TX_ID, "output_index": 1, "value": 100_000}],
+                "outputs": [{"to": ADDR2, "amount": 50_000}],
+                "total_in": 100_000,
+                "total_out": 50_000,
+                "change": 49_000,
+                "built_at_height": 100,
+            }
+        )
+    )
+    out = client.simulate_transfer(
+        from_=ADDR,
+        outputs=[{"to": ADDR2, "amount": 50_000}],
+        fee_rate=4,
+        datum=QUOTE_ID,
+    )
+    assert out["size"] == 245
+    body = json.loads(route.calls.last.request.content)
+    assert body["params"]["datum"] == QUOTE_ID
+
+
+def test_simulate_transfer_omits_datum_when_unset(
+    client: Client, mock_walletd: respx.MockRouter
+) -> None:
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "size": 227,
+                "fee": 1_000,
+                "fee_rate": 4,
+                "inputs": [{"tx_id": TX_ID, "output_index": 1, "value": 100_000}],
+                "outputs": [{"to": ADDR2, "amount": 50_000}],
+                "total_in": 100_000,
+                "total_out": 50_000,
+                "change": 49_000,
+                "built_at_height": 100,
+            }
+        )
+    )
+    client.simulate_transfer(from_=ADDR, outputs=[{"to": ADDR2, "amount": 50_000}], fee_rate=4)
+    body = json.loads(route.calls.last.request.content)
+    assert "datum" not in body["params"]

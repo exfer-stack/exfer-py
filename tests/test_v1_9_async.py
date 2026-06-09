@@ -8,6 +8,7 @@ fires.
 
 from __future__ import annotations
 
+import json
 from collections.abc import AsyncIterator, Iterator
 
 import httpx
@@ -396,3 +397,89 @@ async def test_get_output_spent_by_unspent(
     mock_walletd.post("/").mock(return_value=rpc_ok({"spent": False, "source": "node"}))
     out = await client.get_output_spent_by(LOCK_TX_ID, 0)
     assert out["spent"] is False
+
+
+# ---------------------------------------------------------------------------
+# Honor layer — get_output_datum / find_settlements_by_quote_id / sim datum
+# ---------------------------------------------------------------------------
+
+QUOTE_ID = "0123456789abcdef0123456789abcdef"  # 16 bytes / 32 hex
+
+
+async def test_get_output_datum_quote_id_hit(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok({"quote_id": QUOTE_ID, "unhonorable": False})
+    )
+    out = await client.get_output_datum(TX_ID, 2)
+    assert out["quote_id"] == QUOTE_ID
+    assert out["unhonorable"] is False
+    body = json.loads(route.calls.last.request.content)
+    assert body["params"] == {"tx_id": TX_ID, "output_index": 2}
+
+
+async def test_get_output_datum_null_no_datum(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"quote_id": None, "unhonorable": False}))
+    out = await client.get_output_datum(TX_ID, 0)
+    assert out["quote_id"] is None
+    assert out["unhonorable"] is False
+
+
+async def test_find_settlements_by_quote_id_empty(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
+    route = mock_walletd.post("/").mock(return_value=rpc_ok({"settlements": []}))
+    out = await client.find_settlements_by_quote_id(QUOTE_ID)
+    assert out["settlements"] == []
+    body = json.loads(route.calls.last.request.content)
+    assert body["params"] == {"quote_id": QUOTE_ID}
+
+
+async def test_find_settlements_by_quote_id_multi(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
+    mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "settlements": [
+                    {"tx_id": TX_ID, "output_index": 0},
+                    {"tx_id": LOCK_TX_ID, "output_index": 3},
+                ]
+            }
+        )
+    )
+    out = await client.find_settlements_by_quote_id(QUOTE_ID)
+    assert len(out["settlements"]) == 2
+    assert out["settlements"][1]["output_index"] == 3
+
+
+async def test_simulate_transfer_includes_datum(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
+    route = mock_walletd.post("/").mock(
+        return_value=rpc_ok(
+            {
+                "size": 245,
+                "fee": 1_000,
+                "fee_rate": 4,
+                "inputs": [{"tx_id": TX_ID, "output_index": 1, "value": 100_000}],
+                "outputs": [{"to": ADDR2, "amount": 50_000}],
+                "total_in": 100_000,
+                "total_out": 50_000,
+                "change": 49_000,
+                "built_at_height": 100,
+            }
+        )
+    )
+    out = await client.simulate_transfer(
+        from_=ADDR,
+        outputs=[{"to": ADDR2, "amount": 50_000}],
+        fee_rate=4,
+        datum=QUOTE_ID,
+    )
+    assert out["size"] == 245
+    body = json.loads(route.calls.last.request.content)
+    assert body["params"]["datum"] == QUOTE_ID

@@ -44,11 +44,14 @@ __all__ = [
     "HtlcRole",
     "HtlcState",
     "ListSettlementsResult",
+    "OutputDatum",
     "PaymentUri",
     "QuoteIssueResult",
     "QuoteJson",
     "QuoteVerifyResult",
+    "SettlementOutpoint",
     "SettlementRecord",
+    "SettlementsResult",
     "SignMessageResult",
     "SimulateHtlcLockResult",
     "SimulateTransferResult",
@@ -486,3 +489,36 @@ class SpentByResult(TypedDict, total=False):
     input_index: int
     block_height: int
     source: SpentBySource
+
+
+# ---------------------------------------------------------------------------
+# Honor layer — datum read-back + settlement reverse-lookup (walletd proxies
+# the indexer's strict 16-byte inline-datum index).
+# ---------------------------------------------------------------------------
+
+
+class OutputDatum(TypedDict):
+    # The datum an output carries, as the indexer saw it.
+    #
+    # ``quote_id`` is non-null (32 hex / 16 bytes) iff the output carried a
+    # strict 16-byte *inline* datum — the on-chain quote_id of a honor
+    # settlement. ``unhonorable`` is True iff the output carried a
+    # datum_hash-only commitment (the bytes weren't published inline, so the
+    # quote_id can't be read back — the settlement can't be honor-verified).
+    # An output with no datum at all yields ``{quote_id: None,
+    # unhonorable: False}``: not a quote settlement, but not unhonorable either.
+    quote_id: str | None
+    unhonorable: bool
+
+
+class SettlementOutpoint(TypedDict):
+    # One on-chain output that settled a given quote_id.
+    tx_id: str  # hex64
+    output_index: int
+
+
+class SettlementsResult(TypedDict):
+    # Reverse-lookup result: every outpoint that paid a quote_id. Empty when
+    # nothing on-chain references the quote_id yet; MAY hold more than one
+    # outpoint (a quote could be settled more than once on-chain).
+    settlements: list[SettlementOutpoint]

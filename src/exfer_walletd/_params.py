@@ -55,12 +55,19 @@ def _simulate_transfer_params(
     fee: int | None,
     fee_rate: int | None,
     max_fee: int | None,
+    datum: str | None,
 ) -> dict[str, Any]:
     """Shape shared by simulate-side caller plumbing.
 
     ``outputs`` is forwarded as-is — walletd validates each entry's
     ``to`` / ``amount`` shape. Empty or 16+-entry lists are surfaced as
     server-side ``InvalidParams`` rather than client-side guards.
+
+    ``datum`` mirrors the real ``transfer`` datum: when given, walletd
+    counts its bytes toward the simulated tx size/fee so a honor settlement
+    (which carries the quote_id as a 16-byte datum) dry-runs to the same
+    size/fee the real transfer produces. Hex string, even length, <= 4096
+    bytes — length validation is left to walletd's ``InvalidParams``.
     """
     if fee is not None and fee_rate is not None:
         raise ValueError("`fee` and `fee_rate` are mutually exclusive")
@@ -71,6 +78,8 @@ def _simulate_transfer_params(
         params["fee_rate"] = fee_rate
     if max_fee is not None:
         params["max_fee"] = max_fee
+    if datum is not None:
+        params["datum"] = datum
     return params
 
 

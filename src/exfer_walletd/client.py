@@ -43,10 +43,12 @@ from .types import (
     HtlcRole,
     HtlcState,
     ListSettlementsResult,
+    OutputDatum,
     PaymentUri,
     QuoteIssueResult,
     QuoteJson,
     QuoteVerifyResult,
+    SettlementsResult,
     SignMessageResult,
     SimulateHtlcLockResult,
     SimulateTransferResult,
@@ -539,6 +541,7 @@ class Client:
         fee: int | None = None,
         fee_rate: int | None = None,
         max_fee: int | None = None,
+        datum: str | None = None,
     ) -> SimulateTransferResult:
         """Compute the exact ``(size, fee, fee_rate, ...)`` a real
         :meth:`transfer` would produce, without broadcasting or reserving
@@ -547,6 +550,11 @@ class Client:
 
         ``outputs`` is a list of ``{"to": addr_hex, "amount": exfers}``.
         Up to 16 entries.
+
+        ``datum`` (hex, even length, <= 4096 bytes) mirrors the real
+        :meth:`transfer` datum: pass the quote_id you intend to attach to a
+        honor settlement so the dry-run sizes/fees the tx *with* the datum
+        bytes — matching what the real settlement transfer will produce.
         """
         return cast(
             SimulateTransferResult,
@@ -558,6 +566,7 @@ class Client:
                     fee,
                     fee_rate,
                     max_fee,
+                    datum,
                 ),
             ),
         )
@@ -849,6 +858,34 @@ class Client:
         """
         params = {"tx_id": tx_id, "output_index": output_index}
         return cast(SpentByResult, self._call("get_output_spent_by", params))
+
+    def get_output_datum(self, tx_id: str, output_index: int) -> OutputDatum:
+        """Read the datum an output carries — the honor *verify* step.
+
+        After settling a quote on-chain, read the settlement output back to
+        confirm it carries your ``quote_id``: a non-null ``quote_id`` (32
+        hex) means the 16-byte inline datum was indexed and the settlement
+        is honor-verifiable. ``unhonorable`` is True for a datum_hash-only
+        output (the bytes were never published inline, so the quote_id can't
+        be confirmed). No datum gives ``{quote_id: None, unhonorable: False}``.
+        """
+        params = {"tx_id": tx_id, "output_index": output_index}
+        return cast(OutputDatum, self._call("get_output_datum", params))
+
+    def find_settlements_by_quote_id(self, quote_id: str) -> SettlementsResult:
+        """Reverse-lookup outpoint(s) that settled ``quote_id`` — the honor
+        gate's first step.
+
+        Given a quote_id (32 hex / 16 bytes), find the on-chain settlement
+        outpoint(s) that paid it. Returns ``{"settlements": [...]}`` with zero
+        entries when nothing on-chain references the quote yet, or more than
+        one when it was settled multiple times. Pair each outpoint with
+        :meth:`get_output_datum` to verify the inline quote_id read-back.
+        """
+        return cast(
+            SettlementsResult,
+            self._call("find_settlements_by_quote_id", {"quote_id": quote_id}),
+        )
 
     # ------------------------------------------------------------------
     # Internal
