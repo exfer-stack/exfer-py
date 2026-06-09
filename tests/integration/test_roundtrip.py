@@ -28,9 +28,9 @@ def test_ping_round_trips(client: Client) -> None:
 
 
 def test_generate_then_list_round_trips(client: Client) -> None:
-    a = client.generate_address()
-    b = client.generate_address()
-    listed = client.list_addresses()
+    a = client.generate_address()["address"]
+    b = client.generate_address()["address"]
+    listed = [rec["address"] for rec in client.list_addresses()]
     assert a in listed
     assert b in listed
     # Walletd guarantees sorted ascending; that's worth pinning.
@@ -45,7 +45,7 @@ def test_wrong_token_raises_authentication_error(walletd_process: tuple[str, str
 
 def test_upstream_unreachable_surfaces_typed_error(client: Client) -> None:
     """get_balance touches the upstream node, which we deliberately broke."""
-    addr = client.generate_address()
+    addr = client.generate_address()["address"]
     with pytest.raises(UpstreamError) as excinfo:
         client.get_balance(addr)
     # Walletd's message embeds the unreachable URL.

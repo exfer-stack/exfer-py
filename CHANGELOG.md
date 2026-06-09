@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Breaking — address methods now return full records
+
+- `generate_address()` now returns a `GenerateAddressResult`
+  (`{"address", "pubkey", "index"}`) instead of a bare `str`. The
+  `pubkey` was previously dropped on the floor; it is the value to pass
+  as `payee_pubkey` to `quote_issue`, so callers no longer have to abuse
+  `sign_message` to recover it. Migrate `addr = c.generate_address()` →
+  `addr = c.generate_address()["address"]`.
+- `list_addresses()` now returns `list[AddressRecord]`
+  (`{"address", "index"?, "label"?, "imported"?}`) instead of
+  `list[str]`, preserving the keystore index and label/imported flag.
+  Migrate `for a in c.list_addresses()` →
+  `for rec in c.list_addresses(): a = rec["address"]`.
+
+New `TypedDict`s `GenerateAddressResult` and `AddressRecord` in
+`exfer_walletd.types`. Mirrored on both `Client` and `AsyncClient`.
+
 ## 0.8.0 — walletd v1.9 + v1.9.1 surface
 
 Adds the seventeen JSON-RPC methods walletd grew over its v1.7 → v1.9.1

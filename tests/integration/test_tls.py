@@ -37,9 +37,9 @@ def test_ping_works_over_tls(tls_client: Client) -> None:
 
 
 def test_generate_and_list_addresses_over_tls(tls_client: Client) -> None:
-    addr = tls_client.generate_address()
+    addr = tls_client.generate_address()["address"]
     assert isinstance(addr, str)
-    assert addr in tls_client.list_addresses()
+    assert addr in [rec["address"] for rec in tls_client.list_addresses()]
 
 
 def test_invalid_params_still_typed_over_tls(tls_client: Client) -> None:
@@ -48,7 +48,7 @@ def test_invalid_params_still_typed_over_tls(tls_client: Client) -> None:
 
 
 def test_upstream_error_surfaces_over_tls(tls_client: Client) -> None:
-    addr = tls_client.generate_address()
+    addr = tls_client.generate_address()["address"]
     with pytest.raises(UpstreamError):
         # walletd is pointed at a closed port for upstream
         tls_client.get_balance(addr)
@@ -63,8 +63,8 @@ def test_upstream_error_surfaces_over_tls(tls_client: Client) -> None:
 async def test_async_client_works_over_tls(async_tls_client: AsyncClient) -> None:
     assert await async_tls_client.healthz() is True
     assert await async_tls_client.ping() is None
-    addr = await async_tls_client.generate_address()
-    assert addr in (await async_tls_client.list_addresses())
+    addr = (await async_tls_client.generate_address())["address"]
+    assert addr in [rec["address"] for rec in await async_tls_client.list_addresses()]
 
 
 # ---------------------------------------------------------------------------

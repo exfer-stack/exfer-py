@@ -50,17 +50,20 @@ async def test_ping_returns_none(client: AsyncClient, mock_walletd: respx.MockRo
     assert await client.ping() is None
 
 
-async def test_generate_address_returns_str(
+async def test_generate_address_returns_record(
     client: AsyncClient, mock_walletd: respx.MockRouter
 ) -> None:
-    mock_walletd.post("/").mock(return_value=rpc_ok({"address": ADDR, "pubkey": "de" * 32}))
+    mock_walletd.post("/").mock(
+        return_value=rpc_ok({"address": ADDR, "pubkey": "de" * 32, "index": 3})
+    )
     out = await client.generate_address()
-    assert out == ADDR
+    assert out == {"address": ADDR, "pubkey": "de" * 32, "index": 3}
 
 
 async def test_list_addresses(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
-    mock_walletd.post("/").mock(return_value=rpc_ok({"addresses": [ADDR]}))
-    assert await client.list_addresses() == [ADDR]
+    records = [{"address": ADDR, "index": 0, "label": "default"}]
+    mock_walletd.post("/").mock(return_value=rpc_ok({"addresses": records}))
+    assert await client.list_addresses() == records
 
 
 async def test_get_balance_returns_int(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:

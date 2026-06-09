@@ -34,11 +34,13 @@ from ._transport import (
 from ._version import __version__
 from .types import (
     AddressHistoryResult,
+    AddressRecord,
     AttestationEdgesResult,
     Block,
     ContractStatsRow,
     DetectSwapsResult,
     FollowerStatus,
+    GenerateAddressResult,
     HtlcClaimResult,
     HtlcListResult,
     HtlcLockResult,
@@ -205,20 +207,34 @@ class AsyncClient:
     # Read scope
     # ------------------------------------------------------------------
 
-    async def generate_address(self) -> str:
-        result = await self._call("generate_address", None)
-        if not isinstance(result, dict) or "address" not in result:
-            raise RuntimeError(f"generate_address returned unexpected shape: {result!r}")
-        return str(result["address"])
+    async def generate_address(self) -> GenerateAddressResult:
+        """Create a new managed address.
 
-    async def list_addresses(self) -> list[str]:
+        Returns ``{"address", "pubkey", "index"}``; the ``pubkey`` is the
+        value to hand to :meth:`quote_issue` as ``payee_pubkey``.
+        """
+        result = await self._call("generate_address", None)
+        if not isinstance(result, dict) or "address" not in result or "pubkey" not in result:
+            raise RuntimeError(f"generate_address returned unexpected shape: {result!r}")
+        return GenerateAddressResult(
+            address=str(result["address"]),
+            pubkey=str(result["pubkey"]),
+            index=int(result["index"]),
+        )
+
+    async def list_addresses(self) -> list[AddressRecord]:
+        """Every address walletd holds a key for, sorted ascending.
+
+        Returns full :class:`~exfer_walletd.types.AddressRecord` entries,
+        not bare strings.
+        """
         result = await self._call("list_addresses", None)
         if not isinstance(result, dict) or "addresses" not in result:
             raise RuntimeError(f"list_addresses returned unexpected shape: {result!r}")
         addresses = result["addresses"]
         if not isinstance(addresses, list):
             raise RuntimeError(f"list_addresses.addresses is not a list: {addresses!r}")
-        return [str(a) for a in addresses]
+        return [cast(AddressRecord, a) for a in addresses]
 
     async def get_balance(self, address: str) -> int:
         result = await self._call("get_balance", {"address": address})

@@ -28,11 +28,13 @@ from ._transport import (
 from ._version import __version__
 from .types import (
     AddressHistoryResult,
+    AddressRecord,
     AttestationEdgesResult,
     Block,
     ContractStatsRow,
     DetectSwapsResult,
     FollowerStatus,
+    GenerateAddressResult,
     HtlcClaimResult,
     HtlcListResult,
     HtlcLockResult,
@@ -79,9 +81,9 @@ class Client:
     Example::
 
         with Client("http://127.0.0.1:7448", token) as c:
-            addr = c.generate_address()           # → str
-            bal  = c.get_balance(addr)            # → int
-            print(addr, bal)
+            res  = c.generate_address()           # → {address, pubkey, index}
+            bal  = c.get_balance(res["address"])  # → int
+            print(res["address"], bal)
     """
 
     def __init__(
@@ -244,22 +246,36 @@ class Client:
     # Read scope
     # ------------------------------------------------------------------
 
-    def generate_address(self) -> str:
-        """Create a new managed address. Returns the address (hex)."""
-        result = self._call("generate_address", None)
-        if not isinstance(result, dict) or "address" not in result:
-            raise RuntimeError(f"generate_address returned unexpected shape: {result!r}")
-        return str(result["address"])
+    def generate_address(self) -> GenerateAddressResult:
+        """Create a new managed address.
 
-    def list_addresses(self) -> list[str]:
-        """Every address walletd holds a key for, sorted ascending."""
+        Returns a :class:`~exfer_walletd.types.GenerateAddressResult` —
+        ``{"address", "pubkey", "index"}``. The ``pubkey`` (64 hex) is
+        the value to hand to :meth:`quote_issue` as ``payee_pubkey``.
+        """
+        result = self._call("generate_address", None)
+        if not isinstance(result, dict) or "address" not in result or "pubkey" not in result:
+            raise RuntimeError(f"generate_address returned unexpected shape: {result!r}")
+        return GenerateAddressResult(
+            address=str(result["address"]),
+            pubkey=str(result["pubkey"]),
+            index=int(result["index"]),
+        )
+
+    def list_addresses(self) -> list[AddressRecord]:
+        """Every address walletd holds a key for, sorted ascending.
+
+        Returns full :class:`~exfer_walletd.types.AddressRecord` entries
+        (``address`` plus ``index`` and one of ``label`` / ``imported``),
+        not bare strings — so callers keep the keystore index and label.
+        """
         result = self._call("list_addresses", None)
         if not isinstance(result, dict) or "addresses" not in result:
             raise RuntimeError(f"list_addresses returned unexpected shape: {result!r}")
         addresses = result["addresses"]
         if not isinstance(addresses, list):
             raise RuntimeError(f"list_addresses.addresses is not a list: {addresses!r}")
-        return [str(a) for a in addresses]
+        return [cast(AddressRecord, a) for a in addresses]
 
     def get_balance(self, address: str) -> int:
         """Confirmed balance for ``address``, in exfers."""
