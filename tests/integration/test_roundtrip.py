@@ -30,11 +30,14 @@ def test_ping_round_trips(client: Client) -> None:
 def test_generate_then_list_round_trips(client: Client) -> None:
     a = client.generate_address()["address"]
     b = client.generate_address()["address"]
-    listed = [rec["address"] for rec in client.list_addresses()]
+    records = client.list_addresses()
+    listed = [rec["address"] for rec in records]
     assert a in listed
     assert b in listed
-    # Walletd guarantees sorted ascending; that's worth pinning.
-    assert listed == sorted(listed)
+    # Walletd returns records in ascending keystore-index order; pin that.
+    # (Addresses are random 32-byte hashes, so they are NOT hex-sorted.)
+    indices = [rec["index"] for rec in records if "index" in rec]
+    assert indices == sorted(indices)
 
 
 def test_wrong_token_raises_authentication_error(walletd_process: tuple[str, str]) -> None:
