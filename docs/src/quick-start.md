@@ -62,7 +62,7 @@ raises [`FingerprintMismatchError`](./errors.md#fingerprintmismatcherror).
 
 ```python
 with Client.from_datadir() as c:
-    addr = c.generate_address()      # → str
+    addr = c.generate_address()["address"]  # → {address, pubkey, index}
     print("deposit address:", addr)
 
     bal = c.get_balance(addr)        # → int (exfers)

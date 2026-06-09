@@ -12,7 +12,8 @@ from exfer_walletd import Client
 
 with Client("http://127.0.0.1:7448", token="...") as c:
     assert c.healthz()                # True
-    addr = c.generate_address()       # str
+    res  = c.generate_address()       # {address, pubkey, index}
+    addr = res["address"]
     bal  = c.get_balance(addr)        # int (exfers)
 
     tx = c.transfer(
@@ -38,8 +39,8 @@ from exfer_walletd import AsyncClient
 
 async with AsyncClient("http://127.0.0.1:7448", token) as c:
     assert await c.healthz()
-    addr = await c.generate_address()
-    print(await c.get_balance(addr))
+    res  = await c.generate_address()  # {address, pubkey, index}
+    print(await c.get_balance(res["address"]))
 ```
 
 ## What this isn't

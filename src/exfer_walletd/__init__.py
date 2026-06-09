@@ -5,8 +5,8 @@ Quick start::
     from exfer_walletd import Client
 
     with Client("http://127.0.0.1:7448", token="...") as c:
-        addr = c.generate_address()          # → str
-        print(c.get_balance(addr))           # → int
+        res = c.generate_address()           # → {address, pubkey, index}
+        print(c.get_balance(res["address"]))  # → int
 
 Every method maps 1:1 to a walletd JSON-RPC method; see
 https://exfer-stack.github.io/exfer-py/.

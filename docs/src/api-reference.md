@@ -73,15 +73,18 @@ valid and walletd's RPC layer is up — not just the TCP socket.
 
 ## Read-scope methods
 
-### `generate_address() -> str`
+### `generate_address() -> GenerateAddressResult`
 
-Create a new managed address. Returns the address (lowercase 64-char
-hex). Walletd persists the keypair on disk under
+Create a new managed address. Returns a `GenerateAddressResult` —
+`{"address", "pubkey", "index"}` (address and pubkey are lowercase
+64-char hex). The `pubkey` is the value to pass as `payee_pubkey` to
+`quote_issue`. Walletd persists the keypair on disk under
 `<datadir>/wallets/<address>.key`.
 
-### `list_addresses() -> list[str]`
+### `list_addresses() -> list[AddressRecord]`
 
-Every address walletd holds a key for, sorted ascending.
+Every address walletd holds a key for, sorted ascending. Each
+`AddressRecord` is `{"address", "index", and one of "label"/"imported"}`.
 
 ### `get_balance(address: str) -> int`
 

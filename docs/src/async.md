@@ -12,7 +12,7 @@ from exfer_walletd import AsyncClient
 async def main() -> None:
     async with AsyncClient.from_datadir() as c:
         assert await c.healthz()
-        addr = await c.generate_address()      # → str
+        addr = (await c.generate_address())["address"]  # → {address, pubkey, index}
         bal  = await c.get_balance(addr)       # → int
         print(addr, bal)
 

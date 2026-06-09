@@ -42,19 +42,22 @@ def test_ping_raises_on_error(client: Client, mock_walletd: respx.MockRouter) ->
 # ---------------------------------------------------------------------------
 
 
-def test_generate_address_returns_bare_string(
-    client: Client, mock_walletd: respx.MockRouter
-) -> None:
-    mock_walletd.post("/").mock(return_value=rpc_ok({"address": ADDR, "pubkey": "de" * 32}))
+def test_generate_address_returns_record(client: Client, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(
+        return_value=rpc_ok({"address": ADDR, "pubkey": "de" * 32, "index": 3})
+    )
     out = client.generate_address()
-    assert isinstance(out, str)
-    assert out == ADDR
+    assert out == {"address": ADDR, "pubkey": "de" * 32, "index": 3}
 
 
-def test_list_addresses_unwraps(client: Client, mock_walletd: respx.MockRouter) -> None:
-    mock_walletd.post("/").mock(return_value=rpc_ok({"addresses": [ADDR, "ee" * 32]}))
+def test_list_addresses_returns_records(client: Client, mock_walletd: respx.MockRouter) -> None:
+    records = [
+        {"address": ADDR, "index": 0, "label": "default"},
+        {"address": "ee" * 32, "index": 1, "imported": True},
+    ]
+    mock_walletd.post("/").mock(return_value=rpc_ok({"addresses": records}))
     out = client.list_addresses()
-    assert out == [ADDR, "ee" * 32]
+    assert out == records
 
 
 def test_get_balance_returns_bare_int(client: Client, mock_walletd: respx.MockRouter) -> None:

@@ -25,12 +25,14 @@ from typing import Literal, NamedTuple, TypedDict
 __all__ = [
     "AddressHistoryResult",
     "AddressHistoryRow",
+    "AddressRecord",
     "AttestationEdge",
     "AttestationEdgesResult",
     "Block",
     "ContractStatsRow",
     "DetectSwapsResult",
     "FollowerStatus",
+    "GenerateAddressResult",
     "HtlcClaimRecord",
     "HtlcClaimResult",
     "HtlcListResult",
@@ -73,6 +75,35 @@ class Tip(NamedTuple):
 
     height: int
     block_id: str
+
+
+class GenerateAddressResult(TypedDict):
+    """Receipt from :meth:`Client.generate_address`.
+
+    Carries the freshly-minted ``address`` together with the ``pubkey``
+    walletd derived for it and its keystore ``index``. The ``pubkey``
+    (64 hex) is the value to pass as ``payee_pubkey`` to
+    :meth:`Client.quote_issue` — no separate lookup needed.
+    """
+
+    address: str  # hex64
+    pubkey: str  # hex64
+    index: int
+
+
+class AddressRecord(TypedDict, total=False):
+    """One entry from :meth:`Client.list_addresses`.
+
+    ``address`` is always present. ``index`` is the keystore derivation
+    index. Exactly one of ``label`` (a generated/managed key) or
+    ``imported`` (``True`` for keys imported from outside walletd) is
+    set per record, mirroring walletd's wire shape.
+    """
+
+    address: str  # hex64
+    index: int
+    label: str
+    imported: bool
 
 
 class Utxo(TypedDict):
