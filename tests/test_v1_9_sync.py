@@ -15,7 +15,7 @@ import json
 import pytest
 import respx
 
-from exfer_walletd import Client, IndexerNotConfiguredError, WaitTimeoutError
+from exfer import Client, IndexerNotConfiguredError, WaitTimeoutError
 
 from .conftest import rpc_err, rpc_ok
 

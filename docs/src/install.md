@@ -1,7 +1,7 @@
 # Install
 
 ```bash
-pip install exfer-walletd
+pip install exfer
 ```
 
 That's it. `httpx` is the only runtime dependency.
@@ -15,14 +15,14 @@ That's it. `httpx` is the only runtime dependency.
 ## Verify
 
 ```python
-import exfer_walletd
-print(exfer_walletd.__version__)
+import exfer
+print(exfer.__version__)
 ```
 
 Then probe a running walletd:
 
 ```python
-from exfer_walletd import Client
+from exfer import Client
 
 with Client.from_datadir() as c:        # reads ~/.exfer-walletd/token
     print(c.healthz())                  # → True

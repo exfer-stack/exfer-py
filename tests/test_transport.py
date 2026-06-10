@@ -9,8 +9,8 @@ import httpx
 import pytest
 import respx
 
-from exfer_walletd import Client, ProtocolError, TransportError
-from exfer_walletd._transport import build_envelope, decode_response
+from exfer import Client, ProtocolError, TransportError
+from exfer._transport import build_envelope, decode_response
 
 from .conftest import TOKEN, WALLETD_URL, rpc_ok
 

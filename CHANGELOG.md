@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.10.0 — 2026-06-10
+
+### Renamed — PyPI package `exfer-walletd` → `exfer`
+
+The old distribution name collided with the Rust daemon: `pip install
+exfer-walletd` looked like it installed the daemon, not this client.
+Install and import change accordingly:
+
+```bash
+pip install exfer
+```
+
+```python
+from exfer import Client, AsyncClient
+```
+
+No API changes — `0.10.0` is identical in surface to `exfer-walletd
+0.9.0`. The old `exfer-walletd` package on PyPI is discontinued; switch
+to `exfer`.
+
 ## 0.9.0 — 2026-06-09
 
 ### Breaking — address methods now return full records

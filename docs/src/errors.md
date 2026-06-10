@@ -12,7 +12,7 @@ Underneath, two operational classes:
   `WalletdError`.
 
 ```python
-from exfer_walletd import (
+from exfer import (
     ExferError,        # top-level catch-all
     WalletdError,      # walletd answered with an error
     TransportError,    # walletd unreachable / non-JSON / etc.
@@ -41,7 +41,7 @@ operator forgot to update the client config, or the wrong fingerprint
 was wired in. Always a hard fail; never retry.
 
 ```python
-from exfer_walletd import Client, FingerprintMismatchError
+from exfer import Client, FingerprintMismatchError
 
 try:
     with Client("https://<walletd-host>:7448", token,
@@ -89,7 +89,7 @@ retrying in a few seconds may succeed (once the pending transfers
 confirm and free their UTXOs).
 
 ```python
-from exfer_walletd import InsufficientBalanceError
+from exfer import InsufficientBalanceError
 
 try:
     c.transfer(from_=hot, to=user, amount=1_000_000)

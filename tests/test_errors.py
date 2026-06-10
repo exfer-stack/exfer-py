@@ -6,7 +6,7 @@ import httpx
 import pytest
 import respx
 
-from exfer_walletd import (
+from exfer import (
     AuthenticationError,
     Client,
     InsufficientBalanceError,
@@ -20,7 +20,7 @@ from exfer_walletd import (
     WalletExistsError,
     WalletNotFoundError,
 )
-from exfer_walletd.errors import error_for_code
+from exfer.errors import error_for_code
 
 from .conftest import rpc_err
 
@@ -67,7 +67,7 @@ def test_unknown_code_falls_through_to_walletd_error(
 
 def test_authentication_error_on_401_without_body() -> None:
     """Some proxies strip the JSON body on 401; we still raise AuthenticationError."""
-    from exfer_walletd._transport import decode_response
+    from exfer._transport import decode_response
 
     resp = httpx.Response(401, text="")
     with pytest.raises(AuthenticationError) as excinfo:
@@ -174,7 +174,7 @@ def test_walletd_error_str_includes_code() -> None:
 
 def test_exfer_error_catches_both_branches() -> None:
     """Catching ExferError must catch both WalletdError and TransportError."""
-    from exfer_walletd import ExferError, TransportError
+    from exfer import ExferError, TransportError
 
     assert issubclass(WalletdError, ExferError)
     assert issubclass(TransportError, ExferError)
@@ -182,7 +182,7 @@ def test_exfer_error_catches_both_branches() -> None:
 
 def test_transport_error_still_distinct_from_walletd_error() -> None:
     """The branches share a parent but aren't interchangeable."""
-    from exfer_walletd import TransportError
+    from exfer import TransportError
 
     assert not issubclass(TransportError, WalletdError)
     assert not issubclass(WalletdError, TransportError)

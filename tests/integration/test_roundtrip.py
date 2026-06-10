@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from exfer_walletd import (
+from exfer import (
     AuthenticationError,
     Client,
     UpstreamError,
@@ -61,7 +61,7 @@ def test_invalid_address_rejected_before_upstream(client: Client) -> None:
     The exception must be -32602 (InvalidParamsError), NOT -32020 — proves
     walletd never even tried to forward our garbage to the upstream node.
     """
-    from exfer_walletd import InvalidParamsError
+    from exfer import InvalidParamsError
 
     with pytest.raises(InvalidParamsError):
         client.get_balance("not_hex_at_all")

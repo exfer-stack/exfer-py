@@ -8,7 +8,7 @@ This page assumes you have walletd running. If not, set it up first:
 Three ways, depending on how your deployment hands out the token.
 
 ```python
-from exfer_walletd import Client
+from exfer import Client
 
 # 1. Explicit (works everywhere)
 c = Client("http://127.0.0.1:7448", "your-token")
@@ -105,7 +105,7 @@ with Client.from_datadir() as c:
 ## Handle errors
 
 ```python
-from exfer_walletd import (
+from exfer import (
     Client,
     ExferError,                       # catch-all SDK error
     InsufficientBalanceError,

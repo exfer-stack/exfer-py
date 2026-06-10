@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from exfer_walletd import (
+from exfer import (
     AsyncClient,
     Client,
     FingerprintMismatchError,

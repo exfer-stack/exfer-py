@@ -13,8 +13,8 @@ from pathlib import Path
 import httpx
 import pytest
 
-from exfer_walletd import AsyncClient, Client, FingerprintMismatchError
-from exfer_walletd._transport import (
+from exfer import AsyncClient, Client, FingerprintMismatchError
+from exfer._transport import (
     _FingerprintAsyncHTTPTransport,
     _FingerprintHTTPTransport,
     _verify_peer_fingerprint,
@@ -152,7 +152,7 @@ def test_verify_peer_fingerprint_mismatch_raises() -> None:
 
 
 def test_verify_peer_fingerprint_no_ssl_means_transport_error() -> None:
-    from exfer_walletd import TransportError
+    from exfer import TransportError
 
     resp = _fake_response(None)
     with pytest.raises(TransportError, match="isn't TLS"):
@@ -160,7 +160,7 @@ def test_verify_peer_fingerprint_no_ssl_means_transport_error() -> None:
 
 
 def test_verify_peer_fingerprint_no_network_stream_means_transport_error() -> None:
-    from exfer_walletd import TransportError
+    from exfer import TransportError
 
     resp = httpx.Response(200, json={"ok": True})  # no network_stream extension
     with pytest.raises(TransportError, match="no network stream"):
@@ -168,7 +168,7 @@ def test_verify_peer_fingerprint_no_network_stream_means_transport_error() -> No
 
 
 def test_fingerprint_mismatch_is_a_transport_error_too() -> None:
-    from exfer_walletd import ExferError, TransportError
+    from exfer import ExferError, TransportError
 
     # Catching either of these must catch FingerprintMismatchError.
     assert issubclass(FingerprintMismatchError, TransportError)

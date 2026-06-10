@@ -131,7 +131,7 @@ Current chain tip height. For the (height, block_id) pair, use
 Current chain tip as a `NamedTuple`:
 
 ```python
-from exfer_walletd import Tip
+from exfer import Tip
 
 tip = c.get_tip()
 print(tip.height, tip.block_id)
@@ -677,10 +677,10 @@ read-back.
 
 Single-value methods return bare Python types (`str`, `int`).
 Multi-field methods return `TypedDict`s or `NamedTuple`s — import them
-from `exfer_walletd.types` if you want to annotate variables.
+from `exfer.types` if you want to annotate variables.
 
 ```python
-from exfer_walletd.types import (
+from exfer.types import (
     AddressHistoryResult,
     AddressRecord,
     AttestationEdgesResult,
@@ -713,9 +713,9 @@ from exfer_walletd.types import (
     WaitForPaymentResult,
     WaitForTxResult,
 )
-from exfer_walletd import Tip       # NamedTuple — also top-level
+from exfer import Tip       # NamedTuple — also top-level
 ```
 
 You don't need to import any of these for normal use — they're just
 return-type annotations. `HtlcState` and `HtlcRole` are `Literal`
-aliases, also in `exfer_walletd.types`.
+aliases, also in `exfer.types`.
