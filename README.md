@@ -1,14 +1,14 @@
-# exfer-walletd (Python SDK)
+# exfer (Python SDK)
 
 Typed Python client for the [`exfer-walletd`](https://github.com/exfer-stack/exfer-walletd)
 JSON-RPC API.
 
 ```bash
-pip install exfer-walletd
+pip install exfer
 ```
 
 ```python
-from exfer_walletd import Client
+from exfer import Client
 
 with Client("http://127.0.0.1:7448", token="...") as c:
     assert c.healthz()                # True
@@ -35,7 +35,7 @@ with Client("http://127.0.0.1:7448", token="...") as c:
 ## Async
 
 ```python
-from exfer_walletd import AsyncClient
+from exfer import AsyncClient
 
 async with AsyncClient("http://127.0.0.1:7448", token) as c:
     assert await c.healthz()
@@ -75,7 +75,7 @@ Every documented walletd error code maps to a typed exception, all
 rooted at `ExferError`:
 
 ```python
-from exfer_walletd import (
+from exfer import (
     ExferError,               # blanket catch
     AuthenticationError,      # -32001
     WalletNotFoundError,      # -32010

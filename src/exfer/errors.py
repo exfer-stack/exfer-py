@@ -1,4 +1,4 @@
-"""Exception hierarchy for the exfer-walletd SDK.
+"""Exception hierarchy for the exfer SDK.
 
 All SDK errors inherit from :class:`ExferError` so a blanket
 ``except ExferError`` catches everything — useful for top-level handlers.

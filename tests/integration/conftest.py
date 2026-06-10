@@ -32,7 +32,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from exfer_walletd import AsyncClient, Client
+from exfer import AsyncClient, Client
 
 DEFAULT_BINARY = (
     Path(__file__).resolve().parents[2].parent

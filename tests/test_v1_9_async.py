@@ -15,7 +15,7 @@ import httpx
 import pytest
 import respx
 
-from exfer_walletd import AsyncClient, IndexerNotConfiguredError, WaitTimeoutError
+from exfer import AsyncClient, IndexerNotConfiguredError, WaitTimeoutError
 
 WALLETD_URL = "http://walletd.test"
 TOKEN = "test-token"

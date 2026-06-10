@@ -43,9 +43,13 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     # PyPI Trusted Publishing requires the workflow to run in an
-    # environment whose name matches the configured pending publisher.
-    # Configure once at https://pypi.org/manage/project/exfer-walletd/settings/publishing/
-    # then this job runs without any secret token.
+    # environment whose name matches the configured publisher.
+    # First publish (project doesn't exist yet): add a *pending*
+    # publisher at https://pypi.org/manage/account/publishing/ for
+    # project `exfer` (owner exfer-stack, repo exfer-py, workflow
+    # release.yml, environment pypi). After the first release the
+    # project-level page at /manage/project/exfer/settings/publishing/
+    # takes over. Either way this job runs without any secret token.
     environment: pypi
     steps:
       - uses: actions/download-artifact@v4

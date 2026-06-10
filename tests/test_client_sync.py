@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import respx
 
-from exfer_walletd import Client, Tip
+from exfer import Client, Tip
 
 from .conftest import WALLETD_URL, rpc_ok
 
@@ -28,7 +28,7 @@ def test_ping_returns_none_on_success(client: Client, mock_walletd: respx.MockRo
 
 
 def test_ping_raises_on_error(client: Client, mock_walletd: respx.MockRouter) -> None:
-    from exfer_walletd import UpstreamError
+    from exfer import UpstreamError
 
     from .conftest import rpc_err
 
@@ -490,4 +490,4 @@ def test_user_agent_header_sent(client: Client, mock_walletd: respx.MockRouter) 
     route = mock_walletd.post("/").mock(return_value=rpc_ok({"ok": True}))
     client.ping()
     ua = route.calls.last.request.headers["user-agent"]
-    assert ua.startswith("exfer-walletd-py/")
+    assert ua.startswith("exfer-py/")

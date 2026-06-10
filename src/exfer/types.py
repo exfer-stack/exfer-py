@@ -71,7 +71,7 @@ __all__ = [
 class Tip(NamedTuple):
     """Chain tip — height and block hash together.
 
-    Returned by :meth:`exfer_walletd.Client.get_tip` when you want both
+    Returned by :meth:`exfer.Client.get_tip` when you want both
     pieces of information. If you only need the height, call
     :meth:`get_block_height` instead and skip the unpack.
     """

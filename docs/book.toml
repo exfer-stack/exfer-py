@@ -1,5 +1,5 @@
 [book]
-title       = "exfer-walletd (Python SDK)"
+title       = "exfer (Python SDK)"
 description = "Typed Python client for the exfer-walletd JSON-RPC API"
 authors     = ["exfer-stack"]
 language    = "en"

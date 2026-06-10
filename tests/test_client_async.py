@@ -17,7 +17,7 @@ import httpx
 import pytest
 import respx
 
-from exfer_walletd import AsyncClient, Tip
+from exfer import AsyncClient, Tip
 
 WALLETD_URL = "http://walletd.test"
 TOKEN = "test-token"
@@ -286,7 +286,7 @@ async def test_quote_verify_wire_request_and_unpack(
 async def test_authentication_error_propagates(
     client: AsyncClient, mock_walletd: respx.MockRouter
 ) -> None:
-    from exfer_walletd import AuthenticationError
+    from exfer import AuthenticationError
 
     mock_walletd.post("/").mock(
         return_value=httpx.Response(
@@ -305,7 +305,7 @@ async def test_authentication_error_propagates(
 async def test_transport_error_propagates(
     client: AsyncClient, mock_walletd: respx.MockRouter
 ) -> None:
-    from exfer_walletd import TransportError
+    from exfer import TransportError
 
     mock_walletd.post("/").mock(side_effect=httpx.ConnectError("nope"))
     with pytest.raises(TransportError):

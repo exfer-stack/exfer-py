@@ -1,11 +1,11 @@
-# exfer-walletd (Python SDK)
+# exfer (Python SDK)
 
 A typed Python client for the
 [exfer-walletd](https://github.com/exfer-stack/exfer-walletd) JSON-RPC
 API.
 
 ```python
-from exfer_walletd import Client
+from exfer import Client
 
 with Client("http://127.0.0.1:7448", token="...") as c:
     assert c.healthz()                # → bool

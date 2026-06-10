@@ -7,7 +7,7 @@ FastAPI, aiohttp, or any other asyncio-based backend.
 ## Example
 
 ```python
-from exfer_walletd import AsyncClient
+from exfer import AsyncClient
 
 async def main() -> None:
     async with AsyncClient.from_datadir() as c:
@@ -25,7 +25,7 @@ asyncio.run(main())
 ```python
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from exfer_walletd import AsyncClient
+from exfer import AsyncClient
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

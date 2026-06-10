@@ -3,7 +3,7 @@ requires      = ["hatchling>=1.21"]
 build-backend = "hatchling.build"
 
 [project]
-name            = "exfer-walletd"
+name            = "exfer"
 dynamic         = ["version"]
 description     = "Typed Python client for the exfer-walletd JSON-RPC API"
 readme          = "README.md"
@@ -43,14 +43,14 @@ dev = [
 ]
 
 [tool.hatch.version]
-path = "src/exfer_walletd/_version.py"
+path = "src/exfer/_version.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/exfer_walletd"]
+packages = ["src/exfer"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "src/exfer_walletd",
+    "src/exfer",
     "tests",
     "README.md",
     "LICENSE",
@@ -77,7 +77,7 @@ python_version          = "3.9"
 strict                  = true
 warn_unreachable        = true
 disallow_any_unimported = true
-files                   = ["src/exfer_walletd"]
+files                   = ["src/exfer"]
 
 [[tool.mypy.overrides]]
 module                 = ["respx"]

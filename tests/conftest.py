@@ -13,7 +13,7 @@ import httpx
 import pytest
 import respx
 
-from exfer_walletd import Client
+from exfer import Client
 
 WALLETD_URL = "http://walletd.test"
 TOKEN = "test-token"
