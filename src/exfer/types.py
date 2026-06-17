@@ -29,6 +29,8 @@ __all__ = [
     "AttestationEdge",
     "AttestationEdgesResult",
     "Block",
+    "BscAddressResult",
+    "BscBalancesResult",
     "ContractStatsRow",
     "DetectSwapsResult",
     "FollowerStatus",
@@ -57,6 +59,7 @@ __all__ = [
     "SimulateTransferResult",
     "SpentByResult",
     "SwapGroup",
+    "SwapRecord",
     "Tip",
     "Transaction",
     "TransferResult",
@@ -387,6 +390,64 @@ class SwapGroup(TypedDict):
 
 class DetectSwapsResult(TypedDict):
     swaps: list[SwapGroup]
+
+
+# ---------------------------------------------------------------------------
+# Cross-chain swap engine (walletd ``--swap-pool``; EXFER <-> USDT/BNB on BSC
+# via HTLC <-> HTLC atomic swaps). Fields track
+# ``exfer-walletd/src/swap.rs::SwapRecord``. ``total=False`` because the wire
+# shape grows fields as a swap progresses through its lifecycle and differs
+# by direction.
+# ---------------------------------------------------------------------------
+
+
+class SwapRecord(TypedDict, total=False):
+    swap_id: str
+    # "bnb_to_exfer" (on-ramp: receive EXFER) or "exfer_to_bnb" (off-ramp).
+    direction: str
+    status: str
+    hashlock: str
+    preimage: str
+    # Human-readable decimal amounts (EXFER 8dp, BNB 18dp).
+    amount_in: str
+    amount_out: str
+    # Smallest-unit amounts as strings.
+    amount_in_units: str
+    amount_out_units: str
+    pool_exfer_pubkey: str | None
+    # Where the user sends BNB for the buy (on-ramp) direction.
+    pool_bsc_address: str | None
+    htlc_contract: str | None
+    # This wallet's own derived BSC address (sender on buy / recipient on sell).
+    our_bsc_address: str | None
+    our_exfer_address: str | None
+    user_lock_tx: str | None
+    pool_lock_ref: str | None
+    claim_tx: str | None
+    refund_tx: str | None
+    exfer_timeout_height: int | None
+    bsc_timeout_sec: int | None
+    expires_at: int
+    fee_bps: int
+    network_fee_bnb: str | None
+    error: str | None
+    created_at: int
+    updated_at: int
+
+
+class BscAddressResult(TypedDict, total=False):
+    # ``address`` is the wallet's EIP-55 BSC/EVM address, or null if none has
+    # been created yet; ``created`` is the boolean signal for that.
+    address: str | None
+    created: bool
+
+
+class BscBalancesResult(TypedDict, total=False):
+    # Native BNB on the wallet's derived BSC address, as decimal-string wei
+    # (18 dp). ``gas_reserve_wei`` is the wei to hold back for the BSC tx's own
+    # gas when offering a "send everything" amount (spendable = bnb - reserve).
+    bnb_wei: str
+    gas_reserve_wei: str
 
 
 class WaitForPaymentResult(TypedDict, total=False):

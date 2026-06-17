@@ -80,7 +80,7 @@ wheels = [
 ]
 
 [[package]]
-name = "exfer-walletd"
+name = "exfer"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

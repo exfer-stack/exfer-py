@@ -483,3 +483,66 @@ async def test_simulate_transfer_includes_datum(
     assert out["size"] == 245
     body = json.loads(route.calls.last.request.content)
     assert body["params"]["datum"] == QUOTE_ID
+
+
+# ---------------------------------------------------------------------------
+# Cross-chain swap engine
+# ---------------------------------------------------------------------------
+
+
+def _swap_record_fixture() -> dict[str, object]:
+    """A bnb_to_exfer SwapRecord (mirrors ``exfer-walletd/src/swap.rs``)."""
+    return {
+        "swap_id": "swap-abc123",
+        "direction": "bnb_to_exfer",
+        "status": "quoted",
+        "amount_in": "0.05",
+        "amount_out": "123.4",
+        "expires_at": 1_700_000_300,
+        "fee_bps": 30,
+        "created_at": 1_700_000_000,
+        "updated_at": 1_700_000_000,
+    }
+
+
+async def test_swap_get_quote_sends_params(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
+    route = mock_walletd.post("/").mock(return_value=rpc_ok(_swap_record_fixture()))
+    out = await client.swap_get_quote(direction="bnb_to_exfer", amount_in="0.05", from_=ADDR)
+    assert out["swap_id"] == "swap-abc123"
+    body = json.loads(route.calls.last.request.content)
+    assert body["method"] == "swap_get_quote"
+    assert body["params"] == {"direction": "bnb_to_exfer", "amount_in": "0.05", "from": ADDR}
+
+
+async def test_swap_execute_sends_swap_id(
+    client: AsyncClient, mock_walletd: respx.MockRouter
+) -> None:
+    route = mock_walletd.post("/").mock(return_value=rpc_ok(_swap_record_fixture()))
+    await client.swap_execute("swap-abc123")
+    body = json.loads(route.calls.last.request.content)
+    assert body["method"] == "swap_execute"
+    assert body["params"] == {"swap_id": "swap-abc123"}
+
+
+async def test_swap_list(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok([_swap_record_fixture()]))
+    out = await client.swap_list()
+    assert out[0]["swap_id"] == "swap-abc123"
+
+
+async def test_bsc_get_address(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(return_value=rpc_ok({"address": "0xAbc", "created": True}))
+    out = await client.bsc_get_address()
+    assert out["address"] == "0xAbc"
+    assert out["created"] is True
+
+
+async def test_bsc_get_balances(client: AsyncClient, mock_walletd: respx.MockRouter) -> None:
+    mock_walletd.post("/").mock(
+        return_value=rpc_ok({"bnb_wei": "3505386683362864", "gas_reserve_wei": "200000000000000"})
+    )
+    out = await client.bsc_get_balances()
+    assert out["bnb_wei"] == "3505386683362864"
+    assert out["gas_reserve_wei"] == "200000000000000"

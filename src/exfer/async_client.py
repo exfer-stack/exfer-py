@@ -37,6 +37,8 @@ from .types import (
     AddressRecord,
     AttestationEdgesResult,
     Block,
+    BscAddressResult,
+    BscBalancesResult,
     ContractStatsRow,
     DetectSwapsResult,
     FollowerStatus,
@@ -59,6 +61,7 @@ from .types import (
     SimulateHtlcLockResult,
     SimulateTransferResult,
     SpentByResult,
+    SwapRecord,
     Tip,
     Transaction,
     TransferResult,
@@ -676,6 +679,55 @@ class AsyncClient:
         if limit is not None:
             params["limit"] = limit
         return cast(DetectSwapsResult, await self._call("detect_in_chain_swaps", params))
+
+    # ------------------------------------------------------------------
+    # Cross-chain swap engine (walletd ``--swap-pool``)
+    # ------------------------------------------------------------------
+
+    async def bsc_get_address(self) -> BscAddressResult:
+        """This wallet's BSC/EVM address (EIP-55), or ``created: False`` if none
+        exists yet. Fund this address with USDT/BNB to on-ramp into EXFER via
+        :meth:`swap_get_quote` + :meth:`swap_execute`."""
+        return cast(BscAddressResult, await self._call("bsc_get_address", None))
+
+    async def bsc_get_balances(self) -> BscBalancesResult:
+        """Native BNB balance of this wallet's derived BSC address, as
+        decimal-string wei (18 dp), plus the gas reserve to hold back. Use it to
+        confirm an on-ramp deposit landed before quoting, and to verify the BNB
+        received after an ``exfer_to_bnb`` swap."""
+        return cast(BscBalancesResult, await self._call("bsc_get_balances", None))
+
+    async def swap_pool_info(self) -> dict[str, Any]:
+        """Swap pool configuration + current reserves/rate. Returns an empty/
+        error shape when walletd was started without ``--swap-pool``."""
+        return cast("dict[str, Any]", await self._call("swap_pool_info", None))
+
+    async def swap_get_quote(self, *, direction: str, amount_in: str, from_: str) -> SwapRecord:
+        """Quote a cross-chain swap (no funds move). ``direction`` is
+        ``"bnb_to_exfer"`` (on-ramp) or ``"exfer_to_bnb"`` (off-ramp);
+        ``amount_in`` is a decimal string in the input asset's units; ``from_``
+        is the EXFER address that receives (buy) or funds (sell) the EXFER leg.
+        Returns a :class:`SwapRecord` carrying the ``swap_id`` to execute, the
+        quoted ``amount_out``, pool addresses, and ``expires_at``."""
+        params = {"direction": direction, "amount_in": amount_in, "from": from_}
+        return cast(SwapRecord, await self._call("swap_get_quote", params))
+
+    async def swap_execute(self, swap_id: str) -> SwapRecord:
+        """Execute a quoted swap by ``swap_id``. MOVES FUNDS (locks the input
+        leg). Poll :meth:`swap_status` until ``status`` is terminal."""
+        return cast(SwapRecord, await self._call("swap_execute", {"swap_id": swap_id}))
+
+    async def swap_status(self, swap_id: str) -> SwapRecord:
+        """Current state of a swap by ``swap_id``."""
+        return cast(SwapRecord, await self._call("swap_status", {"swap_id": swap_id}))
+
+    async def swap_refund(self, swap_id: str) -> SwapRecord:
+        """Refund a stalled/expired swap by ``swap_id`` (recovery path)."""
+        return cast(SwapRecord, await self._call("swap_refund", {"swap_id": swap_id}))
+
+    async def swap_list(self) -> list[SwapRecord]:
+        """All swaps this wallet has initiated (the local journal)."""
+        return cast("list[SwapRecord]", await self._call("swap_list", None))
 
     async def htlc_lookup_by_hashlock(self, hash_lock: str) -> list[HtlcRecord]:
         result = await self._call("htlc_lookup_by_hashlock", {"hash_lock": hash_lock})
