@@ -702,14 +702,20 @@ class AsyncClient:
         error shape when walletd was started without ``--swap-pool``."""
         return cast("dict[str, Any]", await self._call("swap_pool_info", None))
 
-    async def swap_get_quote(self, *, direction: str, amount_in: str, from_: str) -> SwapRecord:
+    async def swap_get_quote(
+        self, *, direction: str, amount_in: str, from_: str, flow: str | None = None
+    ) -> SwapRecord:
         """Quote a cross-chain swap (no funds move). ``direction`` is
         ``"bnb_to_exfer"`` (on-ramp) or ``"exfer_to_bnb"`` (off-ramp);
         ``amount_in`` is a decimal string in the input asset's units; ``from_``
         is the EXFER address that receives (buy) or funds (sell) the EXFER leg.
+        ``flow`` is an optional protocol flow (``"v2"`` = pool-locks-first, lock
+        once and leave; ``None``/``"v1"`` = legacy user-locks-first).
         Returns a :class:`SwapRecord` carrying the ``swap_id`` to execute, the
         quoted ``amount_out``, pool addresses, and ``expires_at``."""
         params = {"direction": direction, "amount_in": amount_in, "from": from_}
+        if flow is not None:
+            params["flow"] = flow
         return cast(SwapRecord, await self._call("swap_get_quote", params))
 
     async def swap_execute(self, swap_id: str) -> SwapRecord:
