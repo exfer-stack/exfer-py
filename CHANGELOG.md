@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.1
+
+### Added — `flow` on `swap_get_quote`
+
+`AsyncClient.swap_get_quote()` now accepts an optional `flow` (`"v1"` | `"v2"`)
+that is forwarded to walletd, so callers can request the v2 (pool-locks-first)
+cross-chain swap protocol explicitly instead of relying on walletd's default.
+Omitting it preserves prior behaviour. (The published 0.11.0 wheel predated this
+parameter; downstreams that pass `flow` — e.g. exfer-mcp ≥ 0.7.1 — need ≥ 0.11.1.)
+
 ## 0.10.0 — 2026-06-10
 
 ### Renamed — PyPI package `exfer-walletd` → `exfer`
